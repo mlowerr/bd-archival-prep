@@ -1,30 +1,3 @@
-# bd-archival-prep-windows
-
-A collection of utilities designed to optimize the preparation of data for cold storage, with a specific focus on staging files for high-capacity recordable Blu-ray media.
-
-## Basename collision reports
-
-Generate a report of files that share the same basename (filename with only the last extension removed, such as `name.part.ext` -> `name.part`) from the current directory tree.
-
-### Unix shell
-
-```bash
-# Run from the directory you want to scan.
-/path/to/repo/scripts/unix/report-basename-collisions.sh
-
-# Then inspect the output report.
-cat .archival-prep/basename-collisions.txt
-```
-
-### PowerShell
-
-```powershell
-# Run from the directory you want to scan.
-& "C:\path\to\repo\scripts\windows\report-basename-collisions.ps1"
-
-# Then inspect the output report.
-Get-Content .archival-prep\basename-collisions.txt
-```
 # bd-archival-prep
 
 Utilities to analyze first-level folders in a working directory and generate packing recommendations for archival Blu-ray media.
@@ -98,3 +71,86 @@ Each header is followed by one line per included folder (full path).
 - `.archival-prep` is excluded from candidates to avoid feedback loops.
 - Scripts emit up to 3 best recommendations per media size target.
 - If no folders fit, scripts still emit a recommendation line with `Size used: 0.000 GB`.
+
+## Duration reporting scripts
+
+Cross-platform scripts that scan the **current invocation directory** recursively, extract media durations, and write deterministic reports to `.archival-prep/`.
+
+- Unix: `scripts/unix/report-file-durations.sh`
+- Windows PowerShell: `scripts/windows/report-file-durations.ps1`
+
+### Output files (overwritten on every run)
+
+Both scripts produce:
+
+1. `.archival-prep/file-durations.txt`
+   - Format: `[full path] | [duration]`
+   - Sorted deterministically by full path.
+2. `.archival-prep/possible-duplicates-by-duration.txt`
+   - Groups only durations with **2+ files**.
+   - Group format:
+     - `POSSIBLE DUPLICATE [#] - Duration: [duration]`
+     - followed by each matching full path.
+   - Durations are normalized to the nearest second.
+
+## Dependencies and checks
+
+### Required tool: `ffprobe`
+
+Both scripts use `ffprobe` (from FFmpeg) for duration extraction.
+
+- Unix script behavior:
+  - Checks `ffprobe` availability via `command -v ffprobe`.
+  - Fails with an actionable install message if missing.
+- PowerShell script behavior:
+  - Checks `ffprobe` availability via `Get-Command ffprobe`.
+  - If missing, exits gracefully with install guidance.
+
+### Installation notes
+
+- macOS (Homebrew):
+  - `brew install ffmpeg`
+- Ubuntu/Debian:
+  - `sudo apt-get update && sudo apt-get install -y ffmpeg`
+- Windows (winget):
+  - `winget install Gyan.FFmpeg`
+
+After installation, confirm:
+
+- Unix/macOS: `ffprobe -version`
+- PowerShell: `ffprobe -version`
+
+## Usage
+
+From the directory you want to analyze:
+
+- Unix/macOS:
+  - `bash /path/to/repo/scripts/unix/report-file-durations.sh`
+- Windows PowerShell:
+  - `powershell -ExecutionPolicy Bypass -File C:\path\to\repo\scripts\windows\report-file-durations.ps1`
+
+The scripts only include files where a duration can be extracted.
+
+# Basename collision reports
+
+Generate a report of files that share the same basename (filename with only the last extension removed, such as `name.part.ext` -> `name.part`) from the current directory tree.
+
+### Unix shell
+
+```bash
+# Run from the directory you want to scan.
+/path/to/repo/scripts/unix/report-basename-collisions.sh
+
+# Then inspect the output report.
+cat .archival-prep/basename-collisions.txt
+```
+
+### PowerShell
+
+```powershell
+# Run from the directory you want to scan.
+& "C:\path\to\repo\scripts\windows\report-basename-collisions.ps1"
+
+# Then inspect the output report.
+Get-Content .archival-prep\basename-collisions.txt
+
