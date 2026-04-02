@@ -105,7 +105,7 @@ Group format:
 - Scripts create `.archival-prep/` if it does not already exist.
 - Output files are overwritten on each run.
 - Report ordering is deterministic where sorting is applied (size/path/key sorting in script logic).
-- Size values in recommendation scripts are rounded to 3 decimals.
+- Recommendation search uses exact measured folder sizes internally, then rounds to 3 decimals only in text output.
 
 ---
 
@@ -141,7 +141,7 @@ Group format:
 - Recursively enumerates files from the directory where the script is invoked.
 - Uses `ffprobe` (FFmpeg) to read media duration.
 - Normalizes duration to the nearest second.
-- **Skips non-numeric values** (including `N/A`) so non-timed files are not misreported as `0`.
+- **Skips unreadable/non-extractable durations** (including empty probe output and `N/A`) so non-timed files are not misreported as `0`.
 - Overwrites both output files every run in `.archival-prep/`:
   1. `file-durations.txt` in format `[full path] | [duration]`, sorted by full path.
   2. `possible-duplicates-by-duration.txt`, grouped as:

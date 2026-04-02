@@ -21,9 +21,17 @@ $records = New-Object System.Collections.Generic.List[object]
 
 Get-ChildItem -Path $startDir -File -Recurse | Sort-Object FullName | ForEach-Object {
     $file = $_.FullName
-    $durationRaw = (& $ffprobe.Source -v error -show_entries format=duration -of 'default=noprint_wrappers=1:nokey=1' -- "$file" 2>$null).Trim()
+    $durationOutput = & $ffprobe.Source -v error -show_entries format=duration -of 'default=noprint_wrappers=1:nokey=1' -- "$file" 2>$null
+    if ($null -eq $durationOutput) {
+        return
+    }
+
+    $durationRaw = "$durationOutput".Trim()
 
     if ([string]::IsNullOrWhiteSpace($durationRaw)) {
+        return
+    }
+    if ($durationRaw -eq 'N/A') {
         return
     }
 

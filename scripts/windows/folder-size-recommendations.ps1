@@ -22,13 +22,13 @@ foreach ($dir in $directories) {
     $sizeGb = [Math]::Round($sum / 1GB, 3)
     $items += [PSCustomObject]@{
         Path = $dir.FullName
-        Size = $sizeGb
+        SizeBytes = [long]$sum
     }
 
     Add-Content -Path $folderSizesFile -Value ("{0} | {1:N3} GB" -f $dir.FullName, $sizeGb)
 }
 
-$items = $items | Sort-Object -Property Size -Descending
+$items = $items | Sort-Object -Property SizeBytes -Descending
 $limits = @(46.4, 93.1)
 $topK = 3
 
@@ -39,23 +39,25 @@ function Get-BestSubsets {
         [int]$Take
     )
 
-    $sizes = @($Entries | ForEach-Object { [double]$_.Size })
-    $suffix = New-Object double[] ($sizes.Count + 1)
+    $sizes = @($Entries | ForEach-Object { [long]$_.SizeBytes })
+    $suffix = New-Object long[] ($sizes.Count + 1)
     for ($i = $sizes.Count - 1; $i -ge 0; $i--) {
         $suffix[$i] = $suffix[$i + 1] + $sizes[$i]
     }
+    $limitBytes = $Limit * 1GB
 
     $script:results = [System.Collections.Generic.List[object]]::new()
     $script:seen = [System.Collections.Generic.HashSet[string]]::new()
 
     function Add-Result {
-        param([double]$Used, [long]$Mask, [int]$Take)
+        param([long]$UsedBytes, [int[]]$Picks, [int]$Take)
 
-        $key = '{0}|{1}' -f $Mask, ([Math]::Round($Used, 6))
+        $pickKey = if ($Picks.Count -gt 0) { ($Picks -join ',') } else { '-' }
+        $key = '{0}|{1}' -f $pickKey, $UsedBytes
         if (-not $script:seen.Add($key)) { return }
 
-        $script:results.Add([PSCustomObject]@{ Used = $Used; Mask = $Mask })
-        $ordered = @($script:results | Sort-Object -Property Used -Descending)
+        $script:results.Add([PSCustomObject]@{ UsedBytes = $UsedBytes; Picks = @($Picks) })
+        $ordered = @($script:results | Sort-Object -Property UsedBytes -Descending)
         if ($ordered.Count -gt $Take) {
             $ordered = $ordered[0..($Take - 1)]
         }
@@ -66,27 +68,27 @@ function Get-BestSubsets {
     }
 
     function Dive {
-        param([int]$Index, [double]$Used, [long]$Mask, [array]$Entries, [double[]]$Suffix, [double]$Limit, [int]$Take)
+        param([int]$Index, [long]$UsedBytes, [int[]]$Picks, [array]$Entries, [long[]]$Suffix, [double]$LimitBytes, [int]$Take)
 
-        if ($Used -gt ($Limit + 1e-9)) { return }
+        if ($UsedBytes -gt ($LimitBytes + 1e-6)) { return }
         if ($Index -ge $Entries.Count) {
-            Add-Result -Used $Used -Mask $Mask -Take $Take
+            Add-Result -UsedBytes $UsedBytes -Picks $Picks -Take $Take
             return
         }
 
-        $floor = -1.0
+        $floor = -1
         if ($script:results.Count -ge $Take) {
-            $floor = (@($script:results | Sort-Object -Property Used)[0]).Used
+            $floor = (@($script:results | Sort-Object -Property UsedBytes)[0]).UsedBytes
         }
 
-        if (($Used + $Suffix[$Index]) -lt ($floor - 1e-9)) { return }
+        if (($UsedBytes + $Suffix[$Index]) -lt $floor) { return }
 
-        Dive -Index ($Index + 1) -Used ($Used + [double]$Entries[$Index].Size) -Mask ($Mask -bor (1 -shl $Index)) -Entries $Entries -Suffix $Suffix -Limit $Limit -Take $Take
-        Dive -Index ($Index + 1) -Used $Used -Mask $Mask -Entries $Entries -Suffix $Suffix -Limit $Limit -Take $Take
+        Dive -Index ($Index + 1) -UsedBytes ($UsedBytes + [long]$Entries[$Index].SizeBytes) -Picks (@($Picks + $Index)) -Entries $Entries -Suffix $Suffix -LimitBytes $LimitBytes -Take $Take
+        Dive -Index ($Index + 1) -UsedBytes $UsedBytes -Picks $Picks -Entries $Entries -Suffix $Suffix -LimitBytes $LimitBytes -Take $Take
     }
 
-    Dive -Index 0 -Used 0.0 -Mask 0 -Entries $Entries -Suffix $suffix -Limit $Limit -Take $Take
-    return @($script:results | Sort-Object -Property Used -Descending)
+    Dive -Index 0 -UsedBytes 0 -Picks @() -Entries $Entries -Suffix $suffix -LimitBytes $limitBytes -Take $Take
+    return @($script:results | Sort-Object -Property UsedBytes -Descending)
 }
 
 foreach ($limit in $limits) {
@@ -99,15 +101,14 @@ foreach ($limit in $limits) {
 
     $idx = 1
     foreach ($rec in $recs) {
-        $unused = [double]$limit - [double]$rec.Used
+        $usedGb = [double]$rec.UsedBytes / 1GB
+        $unused = [double]$limit - $usedGb
         Add-Content -Path $recommendationsFile -Value (
-            "[{0:N1} GB] Blu Ray Disk [{1} of recommendation] | Size used: {2:N3} GB | Unused space: {3:N3} GB" -f $limit, $idx, $rec.Used, $unused
+            "[{0:N1} GB] Blu Ray Disk [{1} of recommendation] | Size used: {2:N3} GB | Unused space: {3:N3} GB" -f $limit, $idx, $usedGb, $unused
         )
 
-        for ($bit = 0; $bit -lt $items.Count; $bit++) {
-            if (($rec.Mask -band (1 -shl $bit)) -ne 0) {
-                Add-Content -Path $recommendationsFile -Value $items[$bit].Path
-            }
+        foreach ($pick in $rec.Picks) {
+            Add-Content -Path $recommendationsFile -Value $items[$pick].Path
         }
 
         Add-Content -Path $recommendationsFile -Value ""
