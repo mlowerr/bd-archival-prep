@@ -17,7 +17,7 @@ while IFS= read -r -d '' dir; do
   size_gb="$(awk -v kb="$size_kb" 'BEGIN { printf "%.3f", kb/1048576 }')"
   abs_path="$(cd "$dir" && pwd)"
 
-  printf '%s\t%s\n' "$abs_path" "$size_gb" >> "${CANDIDATES_FILE}"
+  printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_FILE}"
   printf '%s | %s GB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}"
 done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name '.archival-prep' -print0)
 
@@ -39,16 +39,17 @@ with open(candidates_file, newline="", encoding="utf-8") as f:
     for row in reader:
         if len(row) != 2:
             continue
-        path, size = row
-        items.append((path, float(size)))
+        path, size_kb = row
+        items.append((path, int(size_kb)))
 
-sizes = [s for _, s in items]
-suffix = [0.0] * (len(sizes) + 1)
-for i in range(len(sizes) - 1, -1, -1):
-    suffix[i] = suffix[i + 1] + sizes[i]
+sizes_kb = [s for _, s in items]
+suffix = [0] * (len(sizes_kb) + 1)
+for i in range(len(sizes_kb) - 1, -1, -1):
+    suffix[i] = suffix[i + 1] + sizes_kb[i]
 
 
-def best_subsets(limit):
+def best_subsets(limit_gb):
+    limit_kb = limit_gb * 1048576.0
     heap = []  # (used_size, mask)
     seen_masks = set()
 
@@ -64,19 +65,19 @@ def best_subsets(limit):
         if used > heap[0][0] + 1e-9:
             heapq.heapreplace(heap, (used, mask))
 
-    def dfs(idx, used, mask):
-        if used > limit + 1e-9:
+    def dfs(idx, used_kb, mask):
+        if used_kb > limit_kb + 1e-9:
             return
         if idx == len(items):
-            maybe_add(mask, used)
+            maybe_add(mask, used_kb)
             return
 
         floor = heap[0][0] if len(heap) == top_k else -1.0
-        if used + suffix[idx] < floor - 1e-9:
+        if used_kb + suffix[idx] < floor - 1e-9:
             return
 
-        dfs(idx + 1, used + items[idx][1], mask | (1 << idx))
-        dfs(idx + 1, used, mask)
+        dfs(idx + 1, used_kb + items[idx][1], mask | (1 << idx))
+        dfs(idx + 1, used_kb, mask)
 
     dfs(0, 0.0, 0)
     results = sorted(heap, key=lambda x: x[0], reverse=True)
@@ -89,10 +90,11 @@ with open(recommendations_file, "w", encoding="utf-8") as out:
             out.write(f"[{limit:.1f} GB] Blu Ray Disk [1 of recommendation] | Size used: 0.000 GB | Unused space: {limit:.3f} GB\n")
             continue
 
-        for idx, (used, mask) in enumerate(subsets, start=1):
-            unused = limit - used
+        for idx, (used_kb, mask) in enumerate(subsets, start=1):
+            used_gb = used_kb / 1048576.0
+            unused = limit - used_gb
             out.write(
-                f"[{limit:.1f} GB] Blu Ray Disk [{idx} of recommendation] | Size used: {used:.3f} GB | Unused space: {unused:.3f} GB\n"
+                f"[{limit:.1f} GB] Blu Ray Disk [{idx} of recommendation] | Size used: {used_gb:.3f} GB | Unused space: {unused:.3f} GB\n"
             )
             for bit in range(len(items)):
                 if mask & (1 << bit):

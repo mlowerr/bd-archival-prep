@@ -26,11 +26,14 @@ while IFS= read -r rel_path; do
   if [[ -z "$raw_duration" ]]; then
     continue
   fi
+  if [[ "$raw_duration" == "N/A" ]]; then
+    continue
+  fi
   if [[ ! "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
     continue
   fi
 
-  normalized="$(awk -v d="$raw_duration" 'BEGIN { printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
+  normalized="$(awk -v d="$raw_duration" 'BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
   if [[ -z "$normalized" ]]; then
     continue
   fi

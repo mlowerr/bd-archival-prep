@@ -20,7 +20,7 @@ while IFS= read -r -d '' file_path; do
   base_name="${file_name%.*}"
 
   # If there is no extension, keep the entire filename as the basename key.
-  if [[ "${file_name}" == "${base_name}" ]]; then
+  if [[ "${file_name}" == "${base_name}" || -z "${base_name}" ]]; then
     base_name="${file_name}"
   fi
 
