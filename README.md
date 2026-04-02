@@ -1,96 +1,83 @@
 # bd-archival-prep
 
-Small cross-platform utilities for preparing large directories for optical archival workflows.
+Cross-platform scripts for preparing large directories for optical archival workflows.
 
-This repository currently includes two report types:
+## What this repo contains
 
-1. **Blu-ray packing recommendations** for first-level folders.
-2. **Basename collision reports** across a full directory tree.
+This repo provides three script sets, each with Unix and Windows PowerShell versions:
 
-All scripts run against the **current working directory** (the directory you invoke them from), and write results to:
+1. **Blu-ray packing recommendations** (first-level folder packing).
+2. **Basename collision report** (same filename stem across files).
+3. **File duration reports** (all probed durations + possible duplicates by duration).
+
+All scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
 - `.archival-prep/`
 
----
-
 ## Quick start
 
-### Run Blu-ray packing recommendations
+Run from the directory you want to analyze:
 
-- Unix/macOS:
+### Unix/macOS
 
 ```bash
 /path/to/repo/scripts/unix/folder-size-recommendations.sh
+/path/to/repo/scripts/unix/report-basename-collisions.sh
+/path/to/repo/scripts/unix/report-file-durations.sh
 ```
 
-- Windows PowerShell:
+### Windows PowerShell
 
 ```powershell
 & "C:\path\to\repo\scripts\windows\folder-size-recommendations.ps1"
-```
-
-Outputs:
-
-- `.archival-prep/folder-sizes.txt`
-- `.archival-prep/blu-ray-recommendations.txt`
-
-### Run basename collision report
-
-- Unix/macOS:
-
-```bash
-/path/to/repo/scripts/unix/report-basename-collisions.sh
-```
-
-- Windows PowerShell:
-
-```powershell
 & "C:\path\to\repo\scripts\windows\report-basename-collisions.ps1"
+& "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
 ```
 
-Output:
+## Script sets
 
-- `.archival-prep/basename-collisions.txt`
+### 1) Blu-ray packing recommendations
 
----
-
-## Scripts included
-
-### Blu-ray recommendation scripts
-
+**Scripts**
 - `scripts/unix/folder-size-recommendations.sh`
 - `scripts/windows/folder-size-recommendations.ps1`
 
-These scripts:
+**Outputs**
+- `.archival-prep/folder-sizes.txt`
+- `.archival-prep/blu-ray-recommendations.txt`
+- `.archival-prep/folder-sizes.tsv` (Unix script intermediate candidate data)
 
-1. Scan only first-level directories under the invocation directory.
-2. Exclude `.archival-prep` from candidate folders.
-3. Compute folder sizes and write `folder-sizes.txt`.
-4. Compute up to 3 best-fit combinations for each target capacity:
-   - **46.4 GB** usable (50 GB disc)
-   - **93.1 GB** usable (100 GB disc)
-5. Write recommendations to `blu-ray-recommendations.txt`.
+**Behavior**
+- Scans only first-level directories under the invocation directory.
+- Excludes `.archival-prep` from candidates.
+- Calculates folder sizes, then computes up to 3 best-fit combinations for:
+  - `46.4 GB` usable (50 GB disc)
+  - `93.1 GB` usable (100 GB disc)
+- Overwrites outputs each run.
 
-Recommendation header format:
+**Recommendation line format**
 
 ```text
 [Size in GB] Blu Ray Disk [# of recommendation] | Size used: [Sum of GB used] | Unused space: [amount + unit]
 ```
 
-### Basename collision scripts
+### 2) Basename collision report
 
+**Scripts**
 - `scripts/unix/report-basename-collisions.sh`
 - `scripts/windows/report-basename-collisions.ps1`
 
-These scripts:
+**Output**
+- `.archival-prep/basename-collisions.txt`
 
-1. Recursively scan all files under the invocation directory.
-2. Group files by basename (filename with the final extension removed).
-   - Example: `video.sample.mp4` and `video.sample.mkv` both map to `video.sample`.
-3. Emit only groups where 2 or more files share the same basename.
-4. Write the grouped output to `basename-collisions.txt`.
+**Behavior**
+- Recursively scans files under the invocation directory.
+- Groups by basename (`filename` without the final extension).
+  - Example: `video.sample.mp4` and `video.sample.mkv` both map to `video.sample`.
+- Emits only groups with 2+ files.
+- Overwrites output each run.
 
-Group format:
+**Group format**
 
 ```text
 [basename]
@@ -98,84 +85,56 @@ Group format:
 /full/path/to/file2.ext
 ```
 
----
+### 3) File duration reports
 
-## Behavior and assumptions
+**Scripts**
+- `scripts/unix/report-file-durations.sh`
+- `scripts/windows/report-file-durations.ps1`
 
-- Scripts create `.archival-prep/` if it does not already exist.
-- Output files are overwritten on each run.
-- Report ordering is deterministic where sorting is applied (size/path/key sorting in script logic).
-- Recommendation search uses exact measured folder sizes internally, then rounds to 3 decimals only in text output.
+**Dependency**
+- `ffprobe` (from FFmpeg) must be on `PATH`.
 
----
+**Outputs**
+- `.archival-prep/file-durations.txt`
+- `.archival-prep/possible-duplicates-by-duration.txt`
 
-## Typical workflow
+**Behavior**
+- Recursively scans files under the invocation directory.
+- Uses `ffprobe` to read duration.
+- Normalizes duration to nearest second.
+- Skips files with unreadable/non-timed durations (including empty probe output and `N/A`).
+- Overwrites outputs each run.
 
-1. `cd` into the directory you want to prepare.
-2. Run a folder-size recommendation script (Unix or PowerShell).
-3. Review `.archival-prep/blu-ray-recommendations.txt` and pick a set.
-4. Run the basename collision script to catch likely duplicate/alternate encodes.
-5. Review `.archival-prep/basename-collisions.txt` before final burn/staging.
-
----
-
-## Troubleshooting
-
-- **No recommendation candidates appear:**
-  - Ensure the working directory contains subdirectories (not just files).
-- **Recommendations show `Size used: 0.000 GB`:**
-  - Every folder may exceed the disc target.
-- **Collision report is empty:**
-  - No duplicated basenames were found.
-
----
-### `report-file-durations`
-
-| Platform | Script | Purpose | Dependency check |
-|---|---|---|---|
-| Unix | `scripts/unix/report-file-durations.sh` | Recursively scan from the invocation directory, extract durations, and write duration + possible-duplicate reports. | `command -v ffprobe` |
-| Windows PowerShell | `scripts/windows/report-file-durations.ps1` | Same behavior on Windows/PowerShell. | `Get-Command ffprobe` |
-
-### Behavior
-
-- Recursively enumerates files from the directory where the script is invoked.
-- Uses `ffprobe` (FFmpeg) to read media duration.
-- Normalizes duration to the nearest second.
-- **Skips unreadable/non-extractable durations** (including empty probe output and `N/A`) so non-timed files are not misreported as `0`.
-- Overwrites both output files every run in `.archival-prep/`:
-  1. `file-durations.txt` in format `[full path] | [duration]`, sorted by full path.
-  2. `possible-duplicates-by-duration.txt`, grouped as:
-     - `POSSIBLE DUPLICATE [#] - Duration: [duration]`
-     - matching full paths
-     - only includes groups with 2+ matching normalized durations.
+**Output formats**
+- `file-durations.txt`: `[full path] | [duration]`
+- `possible-duplicates-by-duration.txt` groups:
+  - `POSSIBLE DUPLICATE [#] - Duration: [duration]`
+  - matching full paths
+  - only groups with 2+ files
 
 ## Dependencies
 
-### Required: FFmpeg (`ffprobe`)
+### Required only for duration scripts: FFmpeg (`ffprobe`)
 
-Both scripts require `ffprobe` to be present on `PATH`.
-
-- Unix script exits with an actionable error if `ffprobe` is unavailable.
-- PowerShell script exits gracefully with installation guidance if `ffprobe` is unavailable.
-
-### Install
-
+Install examples:
 - macOS (Homebrew): `brew install ffmpeg`
 - Ubuntu/Debian: `sudo apt-get update && sudo apt-get install -y ffmpeg`
 - Windows (winget): `winget install Gyan.FFmpeg`
 
-Verify installation:
-
+Verify:
 - Unix/macOS: `ffprobe -version`
 - PowerShell: `ffprobe -version`
 
-## Usage
+## Typical workflow
 
-Run from the folder you want to analyze:
+1. `cd` into the directory you want to prepare.
+2. Run `folder-size-recommendations` and choose a packing option.
+3. Run `report-basename-collisions` to find likely filename-stem collisions.
+4. Run `report-file-durations` to find possible duration-based duplicates.
+5. Review `.archival-prep/` outputs before staging/burning.
 
-- Unix/macOS: `bash /path/to/repo/scripts/unix/report-file-durations.sh`
-- Windows PowerShell: `powershell -ExecutionPolicy Bypass -File C:\path\to\repo\scripts\windows\report-file-durations.ps1`
 ## Notes
 
-- The tools are intentionally file-system based and do not modify your media/content.
-- If you need to archive from another location, `cd` there first, then run scripts by absolute path.
+- Scripts create `.archival-prep/` automatically when needed.
+- Reports are deterministic where sorting is applied in script logic.
+- Scripts are read-only with respect to your source media/content.
