@@ -17,9 +17,15 @@ duplicates="$out_dir/possible-duplicates-by-duration.txt"
 tmp_tsv="$(mktemp)"
 trap 'rm -f "$tmp_tsv"' EXIT
 
+get_ffprobe_duration_raw() {
+  local file_path="$1"
+  # Keep stderr redirected to /dev/null so ffprobe cannot block on a full stderr pipe.
+  ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null
+}
+
 while IFS= read -r rel_path; do
   abs_path="$start_dir/${rel_path#./}"
-  if ! raw_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$abs_path" 2>/dev/null)"; then
+  if ! raw_duration="$(get_ffprobe_duration_raw "$abs_path")"; then
     continue
   fi
 
