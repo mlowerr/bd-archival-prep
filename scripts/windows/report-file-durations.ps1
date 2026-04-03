@@ -44,9 +44,14 @@ function Get-FFprobeDurationRaw {
         return $null
     }
 
-    $stdout = $process.StandardOutput.ReadToEnd()
-    [void]$process.StandardError.ReadToEnd()
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+
     $process.WaitForExit()
+    $stdoutTask.Wait()
+    $stderrTask.Wait()
+
+    $stdout = $stdoutTask.Result
 
     if ($process.ExitCode -ne 0) {
         return $null
