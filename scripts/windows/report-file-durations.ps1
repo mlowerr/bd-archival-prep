@@ -60,6 +60,43 @@ function Get-FFprobeDurationRaw {
     return $stdout
 }
 
+function Test-IsVideoFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FFprobePath,
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FFprobePath
+    $psi.Arguments = "-v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 -- `"$FilePath`""
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    if (-not $process.Start()) {
+        return $false
+    }
+
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+
+    $process.WaitForExit()
+    $stdoutTask.Wait()
+    $stderrTask.Wait()
+
+    if ($process.ExitCode -ne 0) {
+        return $false
+    }
+
+    return ($stdoutTask.Result.Trim() -eq 'video')
+}
+
 Get-ChildItem -Path $startDir -File -Recurse |
     Where-Object {
         $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\')
@@ -68,6 +105,10 @@ Get-ChildItem -Path $startDir -File -Recurse |
     Sort-Object FullName |
     ForEach-Object {
     $file = $_.FullName
+    if (-not (Test-IsVideoFile -FFprobePath $ffprobe.Source -FilePath $file)) {
+        return
+    }
+
     $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
     if ($null -eq $durationOutput) {
         return

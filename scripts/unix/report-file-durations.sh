@@ -23,8 +23,19 @@ get_ffprobe_duration_raw() {
   ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null
 }
 
+is_video_file() {
+  local file_path="$1"
+  local codec_type
+  codec_type="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null | tr -d '[:space:]')"
+  [[ "$codec_type" == "video" ]]
+}
+
 while IFS= read -r rel_path; do
   abs_path="$start_dir/${rel_path#./}"
+  if ! is_video_file "$abs_path"; then
+    continue
+  fi
+
   if ! raw_duration="$(get_ffprobe_duration_raw "$abs_path")"; then
     continue
   fi
