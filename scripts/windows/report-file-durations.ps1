@@ -21,8 +21,38 @@ $records = New-Object System.Collections.Generic.List[object]
 $outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\', '/')
 $outDirPrefix = "$outDirNormalized\"
 
-if ($PSVersionTable.PSVersion.Major -ge 7) {
-    $PSNativeCommandUseErrorActionPreference = $false
+function Get-FFprobeDurationRaw {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FFprobePath,
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FFprobePath
+    $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `"$FilePath`""
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    if (-not $process.Start()) {
+        return $null
+    }
+
+    $stdout = $process.StandardOutput.ReadToEnd()
+    [void]$process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    if ($process.ExitCode -ne 0) {
+        return $null
+    }
+
+    return $stdout
 }
 
 Get-ChildItem -Path $startDir -File -Recurse |
@@ -33,10 +63,7 @@ Get-ChildItem -Path $startDir -File -Recurse |
     Sort-Object FullName |
     ForEach-Object {
     $file = $_.FullName
-    $durationOutput = & $ffprobe.Source -v error -show_entries format=duration -of 'default=noprint_wrappers=1:nokey=1' -- "$file" 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        return
-    }
+    $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
     if ($null -eq $durationOutput) {
         return
     }

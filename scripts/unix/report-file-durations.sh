@@ -19,7 +19,9 @@ trap 'rm -f "$tmp_tsv"' EXIT
 
 while IFS= read -r rel_path; do
   abs_path="$start_dir/${rel_path#./}"
-  raw_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$abs_path" 2>/dev/null || true)"
+  if ! raw_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$abs_path" 2>/dev/null)"; then
+    continue
+  fi
 
   # Skip files with no usable duration (e.g., "N/A" for non-timed formats).
   raw_duration="$(printf '%s' "$raw_duration" | tr -d '[:space:]')"
