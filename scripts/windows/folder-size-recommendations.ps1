@@ -72,9 +72,12 @@ function Get-TryPack {
             $freeSpaces += $free
             $totalFree += $free
         }
-        if ($totalFree -lt $suffix[$Index]) { return }
         $state = '{0}|{1}' -f $Index, (($freeSpaces | Sort-Object -Descending) -join ',')
         if ($failed.Contains($state)) { return }
+        if ($totalFree -lt $suffix[$Index]) {
+            $null = $failed.Add($state)
+            return
+        }
 
         $needed = [long]$Entries[$Index].SizeBytes
         $seenFree = [System.Collections.Generic.HashSet[long]]::new()
