@@ -18,13 +18,18 @@ $fileDurationsPath = Join-Path $outDir 'file-durations.txt'
 $duplicatesPath = Join-Path $outDir 'possible-duplicates-by-duration.txt'
 
 $records = New-Object System.Collections.Generic.List[object]
+$outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\', '/')
+$outDirPrefix = "$outDirNormalized\"
 
 if ($PSVersionTable.PSVersion.Major -ge 7) {
     $PSNativeCommandUseErrorActionPreference = $false
 }
 
 Get-ChildItem -Path $startDir -File -Recurse |
-    Where-Object { -not $_.FullName.StartsWith($outDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+    Where-Object {
+        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\')
+        -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    } |
     Sort-Object FullName |
     ForEach-Object {
     $file = $_.FullName
