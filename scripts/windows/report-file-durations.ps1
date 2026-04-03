@@ -19,9 +19,19 @@ $duplicatesPath = Join-Path $outDir 'possible-duplicates-by-duration.txt'
 
 $records = New-Object System.Collections.Generic.List[object]
 
-Get-ChildItem -Path $startDir -File -Recurse | Sort-Object FullName | ForEach-Object {
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
+
+Get-ChildItem -Path $startDir -File -Recurse |
+    Where-Object { -not $_.FullName.StartsWith($outDir, [System.StringComparison]::OrdinalIgnoreCase) } |
+    Sort-Object FullName |
+    ForEach-Object {
     $file = $_.FullName
     $durationOutput = & $ffprobe.Source -v error -show_entries format=duration -of 'default=noprint_wrappers=1:nokey=1' -- "$file" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return
+    }
     if ($null -eq $durationOutput) {
         return
     }

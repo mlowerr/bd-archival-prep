@@ -39,7 +39,7 @@ while IFS= read -r rel_path; do
   fi
 
   printf '%s\t%s\n' "$abs_path" "$normalized" >> "$tmp_tsv"
-done < <(find . -type f | sort)
+done < <(find . -path './.archival-prep' -prune -o -type f -print | sort)
 
 sort -t $'\t' -k1,1 "$tmp_tsv" | awk -F $'\t' '{ printf "%s | %s\n", $1, $2 }' > "$file_durations"
 
