@@ -100,6 +100,7 @@ Run from the directory you want to analyze:
 
 **Behavior**
 - Recursively scans files under the invocation directory.
+- Excludes `.archival-prep` from scanning to avoid probing generated report files.
 - Uses `ffprobe` to read duration.
 - Normalizes duration to nearest second.
 - Skips files with unreadable/non-timed durations (including empty probe output and `N/A`).
