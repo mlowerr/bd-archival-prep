@@ -50,15 +50,27 @@ Run from the directory you want to analyze:
 **Behavior**
 - Scans only first-level directories under the invocation directory.
 - Excludes `.archival-prep` from candidates.
-- Calculates folder sizes, then computes up to 3 best-fit combinations for:
-  - `46.4 GB` usable (50 GB disc)
-  - `93.1 GB` usable (100 GB disc)
+- Builds complete packing plans (all candidate directories assigned) for:
+  - **Mixed disk sizes** (both `46.4 GB` and `93.1 GB` usable capacities allowed).
+  - **50 GB only** (`46.4 GB` usable capacity only).
+  - **100 GB only** (`93.1 GB` usable capacity only).
+- Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
-**Recommendation line format**
+**Recommendation report format**
 
 ```text
-[Size in GB] Blu Ray Disk [# of recommendation] | Size used: [Sum of GB used] | Unused space: [amount + unit]
+=== OPTIMAL MIXED DISK PLAN (50GB + 100GB) ===
+Combination: [#] x 93.1 GB + [#] x 46.4 GB
+Total disks: [count]
+Disk counts by size: 100GB=[#], 50GB=[#]
+...
+
+=== OPTIMAL 50GB-ONLY DISK PLAN ===
+...
+
+=== OPTIMAL 100GB-ONLY DISK PLAN ===
+...
 ```
 
 ### 2) Basename collision report
