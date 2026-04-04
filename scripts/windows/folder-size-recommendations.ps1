@@ -62,6 +62,10 @@ Set-Content -Path $candidatesFile -Value $candidateLines -Encoding UTF8
 
 $capacity50Bytes = [long]([Math]::Round(46.4 * 1GB))
 $capacity100Bytes = [long]([Math]::Round(93.1 * 1GB))
+$mediumWorkloadMinItems = 50
+$mediumWorkloadMaxItems = 500
+$mediumDfsStateBudget = 250000
+$script:packFallbackUsed = $false
 
 function Get-TryPack {
     param(
@@ -84,66 +88,137 @@ function Get-TryPack {
         }
     }
 
-    $failed = [System.Collections.Generic.HashSet[string]]::new()
-    $script:packed = $false
+    $runBestFitFallback = {
+        $script:packFallbackUsed = $true
+        foreach ($itemIndex in 0..($sizes.Count - 1)) {
+            $needed = [long]$sizes[$itemIndex]
+            $bestBin = $null
+            $bestFreeAfter = $null
+            for ($i = 0; $i -lt $bins.Count; $i++) {
+                $free = [long]$bins[$i].CapacityBytes - [long]$bins[$i].UsedBytes
+                if ($free -lt $needed) { continue }
+                $freeAfter = $free - $needed
+                if ($null -eq $bestBin -or $freeAfter -lt $bestFreeAfter -or ($freeAfter -eq $bestFreeAfter -and $i -lt $bestBin)) {
+                    $bestBin = $i
+                    $bestFreeAfter = $freeAfter
+                }
+            }
 
-    function Dive-Pack {
-        param([int]$Index)
+            if ($null -eq $bestBin) {
+                return $null
+            }
 
-        if ($script:packed) { return }
-        if ($Index -ge $Entries.Count) {
-            $script:packed = $true
-            return
-        }
-
-        $freeSpaces = @()
-        $totalFree = [long]0
-        foreach ($bin in $bins) {
-            $free = [long]$bin.CapacityBytes - [long]$bin.UsedBytes
-            $freeSpaces += $free
-            $totalFree += $free
-        }
-        $state = '{0}|{1}' -f $Index, (($freeSpaces | Sort-Object -Descending) -join ',')
-        if ($failed.Contains($state)) { return }
-        if ($totalFree -lt $suffix[$Index]) {
-            $null = $failed.Add($state)
-            return
-        }
-
-        $needed = [long]$Entries[$Index].SizeBytes
-        $seenFree = [System.Collections.Generic.HashSet[long]]::new()
-
-        for ($i = 0; $i -lt $bins.Count; $i++) {
-            $bin = $bins[$i]
-            $free = [long]$bin.CapacityBytes - [long]$bin.UsedBytes
-            if ($free -lt $needed) { continue }
-            if (-not $seenFree.Add($free)) { continue }
-
-            $bin.UsedBytes += $needed
-            $null = $bin.Picks.Add($Index)
-            Dive-Pack -Index ($Index + 1)
-            if ($script:packed) { return }
-            $bin.UsedBytes -= $needed
-            $bin.Picks.RemoveAt($bin.Picks.Count - 1)
-        }
-
-        $null = $failed.Add($state)
-    }
-
-    Dive-Pack -Index 0
-    if (-not $script:packed) {
-        return $null
-    }
-
-    $packedBins = @()
-    foreach ($bin in $bins) {
-        $packedBins += [PSCustomObject]@{
-            CapacityBytes = [long]$bin.CapacityBytes
-            UsedBytes = [long]$bin.UsedBytes
-            Picks = @($bin.Picks)
+            $bins[$bestBin].UsedBytes += $needed
+            $null = $bins[$bestBin].Picks.Add($itemIndex)
         }
     }
-    return $packedBins
+
+    if ($sizes.Count -gt $mediumWorkloadMaxItems) {
+        & $runBestFitFallback
+    }
+    else {
+        $failed = [System.Collections.Generic.HashSet[string]]::new()
+        $stack = [System.Collections.Generic.Stack[object]]::new()
+        $statesVisited = 0
+        $stack.Push([PSCustomObject]@{
+            Index = 0
+            Bins = $bins
+        })
+        $solutionBins = $null
+
+        while ($stack.Count -gt 0) {
+            $statesVisited++
+            if ($statesVisited -gt $mediumDfsStateBudget) {
+                $bins = @()
+                foreach ($cap in $CapacitiesBytes) {
+                    $bins += [PSCustomObject]@{
+                        CapacityBytes = [long]$cap
+                        UsedBytes = [long]0
+                        Picks = [System.Collections.Generic.List[int]]::new()
+                    }
+                }
+                & $runBestFitFallback
+                break
+            }
+
+            $frame = $stack.Pop()
+            $index = [int]$frame.Index
+            $currentBins = $frame.Bins
+
+            if ($index -ge $Entries.Count) {
+                $solutionBins = $currentBins
+                break
+            }
+
+            $freeSpaces = @()
+            $totalFree = [long]0
+            foreach ($bin in $currentBins) {
+                $free = [long]$bin.CapacityBytes - [long]$bin.UsedBytes
+                $freeSpaces += $free
+                $totalFree += $free
+            }
+
+            $state = '{0}|{1}' -f $index, (($freeSpaces | Sort-Object -Descending) -join ',')
+            if ($failed.Contains($state)) { continue }
+            if ($totalFree -lt $suffix[$index]) {
+                $null = $failed.Add($state)
+                continue
+            }
+
+            $needed = [long]$Entries[$index].SizeBytes
+            $candidates = New-Object System.Collections.Generic.List[object]
+            $seenFree = [System.Collections.Generic.HashSet[long]]::new()
+
+            for ($i = 0; $i -lt $currentBins.Count; $i++) {
+                $free = [long]$currentBins[$i].CapacityBytes - [long]$currentBins[$i].UsedBytes
+                if ($free -lt $needed) { continue }
+                if (-not $seenFree.Add($free)) { continue }
+                $candidates.Add([PSCustomObject]@{ BinIndex = $i })
+            }
+
+            if ($candidates.Count -eq 0) {
+                $null = $failed.Add($state)
+                continue
+            }
+
+            for ($candidateIndex = $candidates.Count - 1; $candidateIndex -ge 0; $candidateIndex--) {
+                $pickIndex = [int]$candidates[$candidateIndex].BinIndex
+                $nextBins = @()
+                foreach ($bin in $currentBins) {
+                    $nextBins += [PSCustomObject]@{
+                        CapacityBytes = [long]$bin.CapacityBytes
+                        UsedBytes = [long]$bin.UsedBytes
+                        Picks = [System.Collections.Generic.List[int]]::new()
+                    }
+                    foreach ($existingPick in $bin.Picks) {
+                        $null = $nextBins[-1].Picks.Add([int]$existingPick)
+                    }
+                }
+
+                $nextBins[$pickIndex].UsedBytes += $needed
+                $null = $nextBins[$pickIndex].Picks.Add($index)
+
+                $stack.Push([PSCustomObject]@{
+                    Index = $index + 1
+                    Bins = $nextBins
+                })
+            }
+        }
+
+        if (-not $solutionBins) {
+            return $null
+        }
+
+        $bins = $solutionBins
+    }
+
+    return @($bins | ForEach-Object {
+        [PSCustomObject]@{
+            CapacityBytes = [long]$_.CapacityBytes
+            UsedBytes = [long]$_.UsedBytes
+            Picks = @($_.Picks)
+        }
+    })
 }
 
 function Get-OptimalMixedPlan {
@@ -277,6 +352,10 @@ function Write-PlanSection {
     $Lines.Add(("Total writable capacity: {0:N3} GiB" -f ($Plan.CapacityBytes / 1GB)))
     $Lines.Add(("Total unused space: {0:N3} GiB" -f ($unusedBytes / 1GB)))
     $Lines.Add('')
+    if ($script:packFallbackUsed) {
+        $Lines.Add(("Packing strategy: best-fit fallback used (exact DFS target range: {0}-{1} items, budget {2} explored states)." -f $mediumWorkloadMinItems, $mediumWorkloadMaxItems, $mediumDfsStateBudget))
+        $Lines.Add('')
+    }
 
     $diskIndex = 1
     foreach ($bin in $Plan.Bins) {
