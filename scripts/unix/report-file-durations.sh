@@ -101,7 +101,7 @@ while IFS= read -r -d '' abs_path; do
   fi
 
   printf '%s\t%s\n' "$abs_path" "$normalized" >> "$tmp_tsv"
-done < <(find "$start_dir" -type f -print0 | sort -z)
+done < <(find "$start_dir" -type f -print0)
 
 {
   printf '# Script: %s\n' "$script_name"
