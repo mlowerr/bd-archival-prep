@@ -128,7 +128,9 @@ with open(candidates_file, newline="", encoding="utf-8") as f:
         items.append((path, int(size_bytes)))
 
 items.sort(key=lambda x: (-x[1], x[0]))
-sizes_bytes = [size for _, size in items]
+oversized_items = [(path, size) for path, size in items if size > CAP_100_BYTES]
+packable_items = [(path, size) for path, size in items if size <= CAP_100_BYTES]
+sizes_bytes = [size for _, size in packable_items]
 suffix = [0] * (len(sizes_bytes) + 1)
 for i in range(len(sizes_bytes) - 1, -1, -1):
     suffix[i] = suffix[i + 1] + sizes_bytes[i]
@@ -162,13 +164,13 @@ def try_pack(capacities):
             bins[best_bin]["items"].append(idx)
         return bins
 
-    if len(items) > MEDIUM_WORKLOAD_MAX_ITEMS:
+    if len(packable_items) > MEDIUM_WORKLOAD_MAX_ITEMS:
         pack_fallback_used = True
         return greedy_pack()
 
-    recursion_limit = max(sys.getrecursionlimit(), len(items) + RECURSION_PADDING)
+    recursion_limit = max(sys.getrecursionlimit(), len(packable_items) + RECURSION_PADDING)
     sys.setrecursionlimit(recursion_limit)
-    search_budget = MEDIUM_DFS_STATE_BUDGET if MEDIUM_WORKLOAD_MIN_ITEMS <= len(items) <= MEDIUM_WORKLOAD_MAX_ITEMS else None
+    search_budget = MEDIUM_DFS_STATE_BUDGET if MEDIUM_WORKLOAD_MIN_ITEMS <= len(packable_items) <= MEDIUM_WORKLOAD_MAX_ITEMS else None
     states_visited = 0
     budget_exhausted = False
 
@@ -178,7 +180,7 @@ def try_pack(capacities):
         if search_budget is not None and states_visited > search_budget:
             budget_exhausted = True
             return False
-        if idx == len(items):
+        if idx == len(packable_items):
             return True
 
         free_spaces = [b["cap"] - b["used"] for b in bins]
@@ -216,11 +218,10 @@ def try_pack(capacities):
 
 def find_optimal_mixed_plan():
     total = sum(sizes_bytes)
-    if not items:
+    if not packable_items:
+        if oversized_items:
+            return None
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
-
-    if max(sizes_bytes) > CAP_100_BYTES:
-        return None
 
     min_disks = max(1, math.ceil(total / CAP_100_BYTES))
     max_disks = math.ceil(total / CAP_50_BYTES)
@@ -246,13 +247,15 @@ def find_optimal_mixed_plan():
 
 def find_optimal_50_only_plan():
     total = sum(sizes_bytes)
-    if not items:
+    if not packable_items:
+        if oversized_items:
+            return None
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
     if max(sizes_bytes) > CAP_50_BYTES:
         return None
 
     start = max(1, math.ceil(total / CAP_50_BYTES))
-    for n50 in range(start, len(items) + 1):
+    for n50 in range(start, len(packable_items) + 1):
         capacities = [CAP_50_BYTES] * n50
         packed = try_pack(capacities)
         if packed is not None:
@@ -262,13 +265,13 @@ def find_optimal_50_only_plan():
 
 def find_optimal_100_only_plan():
     total = sum(sizes_bytes)
-    if not items:
+    if not packable_items:
+        if oversized_items:
+            return None
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
-    if max(sizes_bytes) > CAP_100_BYTES:
-        return None
 
     start = max(1, math.ceil(total / CAP_100_BYTES))
-    for n100 in range(start, len(items) + 1):
+    for n100 in range(start, len(packable_items) + 1):
         capacities = [CAP_100_BYTES] * n100
         packed = try_pack(capacities)
         if packed is not None:
@@ -284,6 +287,12 @@ def write_plan(out, header, plan):
     total_data = sum(sizes_bytes)
     out.write(f"=== {header} ===\n")
     if plan is None:
+        if packable_items and len(packable_items) < len(items):
+            out.write("No feasible plan found for packable items.\n\n")
+            return
+        if not packable_items and oversized_items:
+            out.write("All items are oversized (> 93.1 GiB); no packable items remain.\n\n")
+            return
         out.write("No feasible plan found.\n\n")
         return
 
@@ -308,7 +317,7 @@ def write_plan(out, header, plan):
             f"Disk [{i} of {total_disks}] [{cap_gb:.1f} GiB] | Size used: {used_gb:.3f} GiB | Unused space: {unused_gb:.3f} GiB\n"
         )
         for pick in b["items"]:
-            out.write(f"{items[pick][0]}\n")
+            out.write(f"{packable_items[pick][0]}\n")
         out.write("\n")
 
 with open(recommendations_file, "w", encoding="utf-8") as out:
@@ -316,6 +325,13 @@ with open(recommendations_file, "w", encoding="utf-8") as out:
     out.write(f"# Report date (UTC): {report_date_utc}\n")
     out.write(f"# Target directory: {report_target}\n")
     out.write("# Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)\n\n")
+    out.write("=== OVERSIZED ===\n")
+    if oversized_items:
+        for path, size in oversized_items:
+            out.write(f"{path} | {bytes_to_gib(size):.3f} GiB\n")
+    else:
+        out.write("None.\n")
+    out.write("\n")
     write_plan(out, "OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)", find_optimal_mixed_plan())
     write_plan(out, "OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)", find_optimal_50_only_plan())
     write_plan(out, "OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)", find_optimal_100_only_plan())

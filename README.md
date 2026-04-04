@@ -100,6 +100,9 @@ Run from the directory you want to analyze:
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
+- Precomputes oversized directories (`> 93.1 GiB`) and lists them in a dedicated `=== OVERSIZED ===` section in the recommendation report.
+- Excludes oversized directories from all packable plan calculations.
+- If every candidate directory is oversized, each plan section reports that no packable items remain.
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
@@ -139,6 +142,9 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
+- Precomputes oversized files (`> 93.1 GiB`) and lists them in a dedicated `=== OVERSIZED ===` section in the recommendation report.
+- Excludes oversized files from all packable plan calculations.
+- If every candidate file is oversized, each plan section reports that no packable items remain.
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
