@@ -10,9 +10,14 @@ This repo provides three script sets, each with Unix and Windows PowerShell vers
 2. **Basename collision report** (same filename stem across files).
 3. **File duration reports** (all probed durations + possible duplicates by duration).
 
-All scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
+By default, all scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
 - `.archival-prep/`
+
+You can optionally override both the scan target and output location:
+
+- Unix: `--target-dir <DIR>` and `--output-dir <DIR>` (or `--log-dir <DIR>` alias).
+- PowerShell: `-TargetDir <DIR>` and `-OutputDir <DIR>`.
 
 ## Quick start
 
@@ -24,6 +29,9 @@ Run from the directory you want to analyze:
 /path/to/repo/scripts/unix/folder-size-recommendations.sh
 /path/to/repo/scripts/unix/report-basename-collisions.sh
 /path/to/repo/scripts/unix/report-file-durations.sh
+
+# Optional override example:
+/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports
 ```
 
 ### Windows PowerShell
@@ -32,6 +40,9 @@ Run from the directory you want to analyze:
 & "C:\path\to\repo\scripts\windows\folder-size-recommendations.ps1"
 & "C:\path\to\repo\scripts\windows\report-basename-collisions.ps1"
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
+
+# Optional override example:
+& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep"
 ```
 
 ## Script sets
@@ -124,6 +135,15 @@ Disk counts by size: 100GB=[#], 50GB=[#]
   - `POSSIBLE DUPLICATE [#] - Duration: [duration]`
   - matching full paths
   - only groups with 2+ files
+
+
+## Report metadata headers
+
+Every generated output file now begins with metadata headers containing:
+
+1. the script that created the output
+2. the report date (UTC)
+3. what location was reported on
 
 ## Dependencies
 
