@@ -4,6 +4,7 @@ param(
     [string]$OutputDir
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 

@@ -13,7 +13,7 @@ if (-not $outputDirProvided) {
     $OutputDir = Join-Path -Path $startDir -ChildPath '.archival-prep'
 }
 if (-not (Test-Path -LiteralPath $OutputDir)) {
-    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    New-Item -ItemType Directory -LiteralPath $OutputDir -Force | Out-Null
 }
 $outDir = (Resolve-Path -LiteralPath $OutputDir).ProviderPath
 $outFile = Join-Path -Path $outDir -ChildPath 'basename-collisions.txt'
@@ -23,7 +23,7 @@ $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $groups = @{}
 
-Get-ChildItem -Path $startDir -File -Recurse | ForEach-Object {
+Get-ChildItem -LiteralPath $startDir -File -Recurse -Force | ForEach-Object {
     $fullPath = $_.FullName
     if ($fullPath -eq $outFile -or $fullPath.StartsWith((Join-Path $outDir ''), [System.StringComparison]::OrdinalIgnoreCase)) {
         return
@@ -68,5 +68,5 @@ foreach ($key in $keys) {
     }
 }
 
-Set-Content -Path $outFile -Value $output -Encoding UTF8
+Set-Content -LiteralPath $outFile -Value $output -Encoding UTF8
 Write-Output "Wrote basename collision report to: $outFile"
