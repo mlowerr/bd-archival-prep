@@ -48,126 +48,296 @@ $candidateFiles = Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     } |
     Select-Object -ExpandProperty FullName
 
-$pendingFiles = New-Object System.Collections.Generic.Queue[string]
-$candidateFiles | ForEach-Object { $pendingFiles.Enqueue($_) }
-$runningJobs = New-Object System.Collections.Generic.List[System.Management.Automation.Job]
+function Add-DurationResult {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Result,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[object]]$RecordList,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$UnreadableList
+    )
 
-function Start-DurationJob {
+    if ($null -eq $Result) {
+        return
+    }
+
+    if ($Result.IsReadableDuration) {
+        $RecordList.Add([PSCustomObject]@{
+            FullPath = [string]$Result.FullPath
+            Duration = [int]$Result.Duration
+        })
+    } else {
+        $UnreadableList.Add([string]$Result.FullPath)
+    }
+}
+
+function Invoke-DurationScanWithLegacyJobs {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FFprobePath,
         [Parameter(Mandatory = $true)]
-        [string]$FilePath
+        [string[]]$Files,
+        [Parameter(Mandatory = $true)]
+        [int]$Throttle,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[object]]$RecordList,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[string]]$UnreadableList
     )
 
-    Start-Job -ScriptBlock {
-        param($ffprobePathArg, $filePathArg)
+    $pendingFiles = New-Object System.Collections.Generic.Queue[string]
+    $Files | ForEach-Object { $pendingFiles.Enqueue($_) }
+    $runningJobs = New-Object System.Collections.Generic.List[System.Management.Automation.Job]
 
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $ffprobePathArg
-        $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `"$filePathArg`""
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.UseShellExecute = $false
-        $psi.CreateNoWindow = $true
+    function Start-DurationJob {
+        param(
+            [Parameter(Mandatory = $true)]
+            [string]$FFprobePath,
+            [Parameter(Mandatory = $true)]
+            [string]$FilePath
+        )
 
-        $process = New-Object System.Diagnostics.Process
-        $process.StartInfo = $psi
+        Start-Job -ScriptBlock {
+            param($ffprobePathArg, $filePathArg)
 
-        if (-not $process.Start()) {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $ffprobePathArg
+            $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `\"$filePathArg`\""
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+
+            $process = New-Object System.Diagnostics.Process
+            $process.StartInfo = $psi
+
+            if (-not $process.Start()) {
+                return [PSCustomObject]@{
+                    FullPath = $filePathArg
+                    IsReadableDuration = $false
+                    Duration = $null
+                }
+            }
+
+            $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+            $stderrTask = $process.StandardError.ReadToEndAsync()
+
+            $process.WaitForExit()
+            $stdoutTask.Wait()
+            $stderrTask.Wait()
+
+            if ($process.ExitCode -ne 0) {
+                return [PSCustomObject]@{
+                    FullPath = $filePathArg
+                    IsReadableDuration = $false
+                    Duration = $null
+                }
+            }
+
+            $durationRaw = "$($stdoutTask.Result)".Trim()
+            if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
+                return [PSCustomObject]@{
+                    FullPath = $filePathArg
+                    IsReadableDuration = $false
+                    Duration = $null
+                }
+            }
+
+            $parsed = 0.0
+            if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
+                $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+                return [PSCustomObject]@{
+                    FullPath = $filePathArg
+                    IsReadableDuration = $true
+                    Duration = $normalized
+                }
+            }
+
             return [PSCustomObject]@{
                 FullPath = $filePathArg
                 IsReadableDuration = $false
                 Duration = $null
             }
+        } -ArgumentList $FFprobePath, $FilePath
+    }
+
+    function Receive-CompletedJobResults {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.Collections.Generic.List[System.Management.Automation.Job]]$JobList,
+            [switch]$WaitForAny
+        )
+
+        if ($JobList.Count -eq 0) {
+            return
         }
 
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $completed = if ($WaitForAny) {
+            @(Wait-Job -Job $JobList -Any)
+        } else {
+            @(Wait-Job -Job $JobList)
+        }
 
-        $process.WaitForExit()
-        $stdoutTask.Wait()
-        $stderrTask.Wait()
-
-        if ($process.ExitCode -ne 0) {
-            return [PSCustomObject]@{
-                FullPath = $filePathArg
-                IsReadableDuration = $false
-                Duration = $null
+        foreach ($job in $completed) {
+            $results = @(Receive-Job -Job $job)
+            foreach ($result in $results) {
+                Add-DurationResult -Result $result -RecordList $RecordList -UnreadableList $UnreadableList
             }
+            Remove-Job -Job $job -Force
+            [void]$JobList.Remove($job)
+        }
+    }
+
+    while ($pendingFiles.Count -gt 0 -or $runningJobs.Count -gt 0) {
+        while ($pendingFiles.Count -gt 0 -and $runningJobs.Count -lt $Throttle) {
+            $nextFile = $pendingFiles.Dequeue()
+            $runningJobs.Add((Start-DurationJob -FFprobePath $FFprobePath -FilePath $nextFile))
         }
 
-        $durationRaw = "$($stdoutTask.Result)".Trim()
-        if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
-            return [PSCustomObject]@{
-                FullPath = $filePathArg
-                IsReadableDuration = $false
-                Duration = $null
-            }
-        }
+        Receive-CompletedJobResults -JobList $runningJobs -WaitForAny
+    }
+}
 
-        $parsed = 0.0
-        if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
-            $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
-            return [PSCustomObject]@{
-                FullPath = $filePathArg
-                IsReadableDuration = $true
-                Duration = $normalized
-            }
-        }
+$runspacePool = $null
+$tasks = New-Object System.Collections.Generic.List[object]
+$usedLegacyFallback = $false
 
+$durationProbeScript = {
+    param($ffprobePathArg, $filePathArg)
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $ffprobePathArg
+    $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `\"$filePathArg`\""
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    if (-not $process.Start()) {
         return [PSCustomObject]@{
             FullPath = $filePathArg
             IsReadableDuration = $false
             Duration = $null
         }
-    } -ArgumentList $FFprobePath, $FilePath
+    }
+
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+
+    $process.WaitForExit()
+    $stdoutTask.Wait()
+    $stderrTask.Wait()
+
+    if ($process.ExitCode -ne 0) {
+        return [PSCustomObject]@{
+            FullPath = $filePathArg
+            IsReadableDuration = $false
+            Duration = $null
+        }
+    }
+
+    $durationRaw = "$($stdoutTask.Result)".Trim()
+    if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
+        return [PSCustomObject]@{
+            FullPath = $filePathArg
+            IsReadableDuration = $false
+            Duration = $null
+        }
+    }
+
+    $parsed = 0.0
+    if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
+        $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+        return [PSCustomObject]@{
+            FullPath = $filePathArg
+            IsReadableDuration = $true
+            Duration = $normalized
+        }
+    }
+
+    return [PSCustomObject]@{
+        FullPath = $filePathArg
+        IsReadableDuration = $false
+        Duration = $null
+    }
 }
 
-function Receive-CompletedJobResults {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Collections.Generic.List[System.Management.Automation.Job]]$JobList,
-        [switch]$WaitForAny
-    )
+try {
+    $runspacePool = [System.Management.Automation.Runspaces.RunspaceFactory]::CreateRunspacePool(1, $Jobs)
+    $runspacePool.Open()
 
-    if ($JobList.Count -eq 0) {
-        return
+    foreach ($filePath in $candidateFiles) {
+        $ps = [PowerShell]::Create()
+        $ps.RunspacePool = $runspacePool
+        [void]$ps.AddScript($durationProbeScript)
+        [void]$ps.AddArgument($ffprobe.Source)
+        [void]$ps.AddArgument($filePath)
+
+        $handle = $ps.BeginInvoke()
+        $tasks.Add([PSCustomObject]@{
+            PowerShell = $ps
+            Handle = $handle
+        })
     }
 
-    $completed = if ($WaitForAny) {
-        @(Wait-Job -Job $JobList -Any)
-    } else {
-        @(Wait-Job -Job $JobList)
-    }
+    while ($tasks.Count -gt 0) {
+        $completedThisPass = $false
 
-    foreach ($job in $completed) {
-        $results = @(Receive-Job -Job $job)
-        foreach ($result in $results) {
-            if ($null -eq $result) {
+        for ($i = $tasks.Count - 1; $i -ge 0; $i--) {
+            $task = $tasks[$i]
+            if (-not $task.Handle.IsCompleted) {
                 continue
             }
-            if ($result.IsReadableDuration) {
-                $records.Add([PSCustomObject]@{
-                    FullPath = $result.FullPath
-                    Duration = [int]$result.Duration
-                })
-            } else {
-                $unreadableFiles.Add([string]$result.FullPath)
+
+            $completedThisPass = $true
+            $results = @($task.PowerShell.EndInvoke($task.Handle))
+            foreach ($result in $results) {
+                Add-DurationResult -Result $result -RecordList $records -UnreadableList $unreadableFiles
             }
+            $task.PowerShell.Dispose()
+            $tasks.RemoveAt($i)
         }
-        Remove-Job -Job $job -Force
-        [void]$JobList.Remove($job)
+
+        if (-not $completedThisPass) {
+            Start-Sleep -Milliseconds 25
+        }
+    }
+} catch {
+    $usedLegacyFallback = $true
+
+    foreach ($task in $tasks) {
+        if ($null -ne $task.PowerShell) {
+            $task.PowerShell.Dispose()
+        }
+    }
+    $tasks.Clear()
+
+    if ($null -ne $runspacePool) {
+        $runspacePool.Close()
+        $runspacePool.Dispose()
+        $runspacePool = $null
+    }
+
+    Invoke-DurationScanWithLegacyJobs -FFprobePath $ffprobe.Source -Files $candidateFiles -Throttle $Jobs -RecordList $records -UnreadableList $unreadableFiles
+} finally {
+    foreach ($task in $tasks) {
+        if ($null -ne $task.PowerShell) {
+            $task.PowerShell.Dispose()
+        }
+    }
+
+    if ($null -ne $runspacePool) {
+        $runspacePool.Close()
+        $runspacePool.Dispose()
     }
 }
 
-while ($pendingFiles.Count -gt 0 -or $runningJobs.Count -gt 0) {
-    while ($pendingFiles.Count -gt 0 -and $runningJobs.Count -lt $Jobs) {
-        $nextFile = $pendingFiles.Dequeue()
-        $runningJobs.Add((Start-DurationJob -FFprobePath $ffprobe.Source -FilePath $nextFile))
-    }
-
-    Receive-CompletedJobResults -JobList $runningJobs -WaitForAny
+if ($usedLegacyFallback) {
+    Write-Warning 'Runspace pool mode was unavailable; fell back to Start-Job worker mode.'
 }
 
 $durationLines = New-Object System.Collections.Generic.List[string]
