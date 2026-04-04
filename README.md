@@ -76,7 +76,7 @@ Run from the directory you want to analyze:
 
 - `-TargetDir <DIR>`: directory to scan (defaults to current location).
 - `-OutputDir <DIR>`: report output location (defaults to `<target>\.archival-prep`).
-- `-Jobs <int>` (duration script): max concurrent `ffprobe` workers (defaults to `3`, must be `>= 1`).
+- `-Jobs <int>` (duration script): max concurrent `ffprobe` workers (defaults to `3`, must be `>= 1`); the script chooses the underlying parallelism implementation transparently.
 
 ## Script sets
 
@@ -189,7 +189,7 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 - Recursively scans files under the target directory.
 - Excludes `.archival-prep` from scanning to avoid probing generated report files.
 - Probes each file once with `ffprobe` to read duration.
-- Uses bounded parallel workers for `ffprobe` calls (`--jobs` / `-Jobs`, default `3`).
+- Uses bounded parallel workers for `ffprobe` calls (`--jobs` / `-Jobs`, default `3`), with implementation details handled transparently per host capabilities.
 - Classifies each file as either:
   - numeric duration (normalized to nearest second), or
   - no readable duration (`ffprobe` failure, empty output, `N/A`, or non-numeric duration output).
