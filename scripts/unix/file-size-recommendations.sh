@@ -51,7 +51,7 @@ FILE_SIZES_FILE="${OUTPUT_DIR}/file-sizes.txt"
 RECOMMENDATIONS_FILE="${OUTPUT_DIR}/blu-ray-file-recommendations.txt"
 CANDIDATES_FILE="${OUTPUT_DIR}/file-sizes.tsv"
 CANDIDATES_DATA_FILE="$(mktemp)"
-trap 'rm -f "${CANDIDATES_DATA_FILE}" "${FILE_SIZES_FILE}.body"' EXIT
+trap 'rm -f "${CANDIDATES_DATA_FILE}"' EXIT
 
 SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -63,32 +63,39 @@ else
 fi
 
 while IFS= read -r -d '' file; do
-  size_kb="$(du -k "$file" | cut -f1)"
-  size_gb="$(awk -v kb="$size_kb" 'BEGIN { printf "%.3f", kb/1048576 }')"
+  size_bytes="$(stat -c '%s' "$file")"
 
-  printf '%s\t%s\n' "$file" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
-  printf '%s | %s GiB\n' "$file" "$size_gb" >> "${FILE_SIZES_FILE}.body"
+  printf '%s	%s
+' "$file" "$size_bytes" >> "${CANDIDATES_DATA_FILE}"
 done < <(find "${find_args[@]}")
 
-sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
+sort -t $'	' -k2,2nr -k1,1 -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
 
 {
-  printf '# Script: %s\n' "${SCRIPT_NAME}"
-  printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
-  printf '# Target directory: %s\n' "${INVOCATION_DIR}"
-  printf '# Subject: recursive file sizes in GiB (binary units)\n\n'
-  if [[ -f "${FILE_SIZES_FILE}.body" ]]; then
-    cat "${FILE_SIZES_FILE}.body"
-  fi
-} > "${FILE_SIZES_FILE}"
+  printf '# Script: %s
+' "${SCRIPT_NAME}"
+  printf '# Report date (UTC): %s
+' "${REPORT_DATE_UTC}"
+  printf '# Target directory: %s
+' "${INVOCATION_DIR}"
+  printf '# Subject: recursive file size candidates in bytes (TSV: path<TAB>size_bytes)
 
-{
-  printf '# Script: %s\n' "${SCRIPT_NAME}"
-  printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
-  printf '# Target directory: %s\n' "${INVOCATION_DIR}"
-  printf '# Subject: recursive file size candidates in KB (TSV: path<TAB>size_kb)\n\n'
+'
   cat "${CANDIDATES_DATA_FILE}"
 } > "${CANDIDATES_FILE}"
+
+{
+  printf '# Script: %s
+' "${SCRIPT_NAME}"
+  printf '# Report date (UTC): %s
+' "${REPORT_DATE_UTC}"
+  printf '# Target directory: %s
+' "${INVOCATION_DIR}"
+  printf '# Subject: recursive file sizes in GiB (binary units)
+
+'
+  awk -F $'\t' '{ printf "%s | %.3f GiB\n", $1, $2/1073741824 }' "${CANDIDATES_DATA_FILE}"
+} > "${FILE_SIZES_FILE}"
 
 python3 - "${CANDIDATES_FILE}" "${RECOMMENDATIONS_FILE}" "${SCRIPT_NAME}" "${REPORT_DATE_UTC}" "${INVOCATION_DIR}" <<'PY'
 import csv
@@ -100,8 +107,8 @@ recommendations_file = sys.argv[2]
 script_name = sys.argv[3]
 report_date_utc = sys.argv[4]
 report_target = sys.argv[5]
-CAP_50_KB = int(round(46.4 * 1048576))
-CAP_100_KB = int(round(93.1 * 1048576))
+CAP_50_BYTES = int(round(46.4 * 1024**3))
+CAP_100_BYTES = int(round(93.1 * 1024**3))
 
 items = []
 with open(candidates_file, newline="", encoding="utf-8") as f:
@@ -113,14 +120,14 @@ with open(candidates_file, newline="", encoding="utf-8") as f:
             continue
         if len(row) != 2:
             continue
-        path, size_kb = row
-        items.append((path, int(size_kb)))
+        path, size_bytes = row
+        items.append((path, int(size_bytes)))
 
-items.sort(key=lambda x: x[1], reverse=True)
-sizes_kb = [size for _, size in items]
-suffix = [0] * (len(sizes_kb) + 1)
-for i in range(len(sizes_kb) - 1, -1, -1):
-    suffix[i] = suffix[i + 1] + sizes_kb[i]
+items.sort(key=lambda x: (-x[1], x[0]))
+sizes_bytes = [size for _, size in items]
+suffix = [0] * (len(sizes_bytes) + 1)
+for i in range(len(sizes_bytes) - 1, -1, -1):
+    suffix[i] = suffix[i + 1] + sizes_bytes[i]
 
 
 def try_pack(capacities):
@@ -139,7 +146,7 @@ def try_pack(capacities):
             failed.add(state)
             return False
 
-        needed = sizes_kb[idx]
+        needed = sizes_bytes[idx]
         seen_free = set()
         for b in bins:
             free = b["cap"] - b["used"]
@@ -162,28 +169,28 @@ def try_pack(capacities):
 
 
 def find_optimal_mixed_plan():
-    total = sum(sizes_kb)
+    total = sum(sizes_bytes)
     if not items:
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
 
-    if max(sizes_kb) > CAP_100_KB:
+    if max(sizes_bytes) > CAP_100_BYTES:
         return None
 
-    min_disks = max(1, math.ceil(total / CAP_100_KB))
-    max_disks = math.ceil(total / CAP_50_KB)
+    min_disks = max(1, math.ceil(total / CAP_100_BYTES))
+    max_disks = math.ceil(total / CAP_50_BYTES)
 
     for disk_count in range(min_disks, max_disks + 1):
         pairs = []
         for n100 in range(0, disk_count + 1):
             n50 = disk_count - n100
-            capacity = n100 * CAP_100_KB + n50 * CAP_50_KB
+            capacity = n100 * CAP_100_BYTES + n50 * CAP_50_BYTES
             if capacity < total:
                 continue
             pairs.append((capacity, n100, n50))
 
         pairs.sort(key=lambda x: (x[0], x[1]))
         for capacity, n100, n50 in pairs:
-            capacities = [CAP_100_KB] * n100 + [CAP_50_KB] * n50
+            capacities = [CAP_100_BYTES] * n100 + [CAP_50_BYTES] * n50
             packed = try_pack(capacities)
             if packed is not None:
                 return {"bins": packed, "n100": n100, "n50": n50, "capacity": capacity}
@@ -192,43 +199,43 @@ def find_optimal_mixed_plan():
 
 
 def find_optimal_50_only_plan():
-    total = sum(sizes_kb)
+    total = sum(sizes_bytes)
     if not items:
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
-    if max(sizes_kb) > CAP_50_KB:
+    if max(sizes_bytes) > CAP_50_BYTES:
         return None
 
-    start = max(1, math.ceil(total / CAP_50_KB))
+    start = max(1, math.ceil(total / CAP_50_BYTES))
     for n50 in range(start, len(items) + 1):
-        capacities = [CAP_50_KB] * n50
+        capacities = [CAP_50_BYTES] * n50
         packed = try_pack(capacities)
         if packed is not None:
-            return {"bins": packed, "n100": 0, "n50": n50, "capacity": n50 * CAP_50_KB}
+            return {"bins": packed, "n100": 0, "n50": n50, "capacity": n50 * CAP_50_BYTES}
     return None
 
 
 def find_optimal_100_only_plan():
-    total = sum(sizes_kb)
+    total = sum(sizes_bytes)
     if not items:
         return {"bins": [], "n100": 0, "n50": 0, "capacity": 0}
-    if max(sizes_kb) > CAP_100_KB:
+    if max(sizes_bytes) > CAP_100_BYTES:
         return None
 
-    start = max(1, math.ceil(total / CAP_100_KB))
+    start = max(1, math.ceil(total / CAP_100_BYTES))
     for n100 in range(start, len(items) + 1):
-        capacities = [CAP_100_KB] * n100
+        capacities = [CAP_100_BYTES] * n100
         packed = try_pack(capacities)
         if packed is not None:
-            return {"bins": packed, "n100": n100, "n50": 0, "capacity": n100 * CAP_100_KB}
+            return {"bins": packed, "n100": n100, "n50": 0, "capacity": n100 * CAP_100_BYTES}
     return None
 
 
-def kb_to_gb(value):
-    return value / 1048576.0
+def bytes_to_gib(value):
+    return value / 1024**3
 
 
 def write_plan(out, header, plan):
-    total_data = sum(sizes_kb)
+    total_data = sum(sizes_bytes)
     out.write(f"=== {header} ===\n")
     if plan is None:
         out.write("No feasible plan found.\n\n")
@@ -239,13 +246,13 @@ def write_plan(out, header, plan):
     out.write(f"Combination: {plan['n100']} x 100 GB marketed (93.1 GiB) + {plan['n50']} x 50 GB marketed (46.4 GiB)\n")
     out.write(f"Total disks: {total_disks}\n")
     out.write(f"Disk counts by size (marketed): 100GB={plan['n100']}, 50GB={plan['n50']}\n")
-    out.write(f"Total data size: {kb_to_gb(total_data):.3f} GiB\n")
-    out.write(f"Total writable capacity: {kb_to_gb(plan['capacity']):.3f} GiB\n")
-    out.write(f"Total unused space: {kb_to_gb(unused):.3f} GiB\n\n")
+    out.write(f"Total data size: {bytes_to_gib(total_data):.3f} GiB\n")
+    out.write(f"Total writable capacity: {bytes_to_gib(plan['capacity']):.3f} GiB\n")
+    out.write(f"Total unused space: {bytes_to_gib(unused):.3f} GiB\n\n")
 
     for i, b in enumerate(plan["bins"], start=1):
-        used_gb = kb_to_gb(b["used"])
-        cap_gb = kb_to_gb(b["cap"])
+        used_gb = bytes_to_gib(b["used"])
+        cap_gb = bytes_to_gib(b["cap"])
         unused_gb = cap_gb - used_gb
         out.write(
             f"Disk [{i} of {total_disks}] [{cap_gb:.1f} GiB] | Size used: {used_gb:.3f} GiB | Unused space: {unused_gb:.3f} GiB\n"
@@ -264,7 +271,6 @@ with open(recommendations_file, "w", encoding="utf-8") as out:
     write_plan(out, "OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)", find_optimal_100_only_plan())
 PY
 
-rm -f "${FILE_SIZES_FILE}.body"
 
 echo "Wrote: ${FILE_SIZES_FILE}"
 echo "Wrote: ${RECOMMENDATIONS_FILE}"
