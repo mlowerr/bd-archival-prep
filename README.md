@@ -95,12 +95,19 @@ Run from the directory you want to analyze:
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
+- Precomputes **oversized** candidates (`size > 93.1 GiB`, i.e., larger than a 100 GB marketed disc's usable capacity) and excludes them from planner input.
+- Adds an `=== OVERSIZED ===` section at the top of the recommendation report with `path | size`.
+- Keeps planning focused on the remaining packable candidates and reports when no feasible plan remains for that packable set.
+- If all candidates are oversized, each plan section reports `No feasible plan remains for packable items.`
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
 **Recommendation report format**
 
 ```text
+=== OVERSIZED ===
+/path/to/too-large-folder | 120.000 GiB
+
 === OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
 Combination: [#] x 100 GB marketed (93.1 GiB) + [#] x 50 GB marketed (46.4 GiB)
 Total disks: [count]
@@ -134,6 +141,10 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
+- Precomputes **oversized** candidates (`size > 93.1 GiB`, i.e., larger than a 100 GB marketed disc's usable capacity) and excludes them from planner input.
+- Adds an `=== OVERSIZED ===` section at the top of the recommendation report with `path | size`.
+- Keeps planning focused on the remaining packable candidates and reports when no feasible plan remains for that packable set.
+- If all candidates are oversized, each plan section reports `No feasible plan remains for packable items.`
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 

@@ -62,6 +62,8 @@ Set-Content -Path $candidatesFile -Value $candidateLines -Encoding UTF8
 
 $capacity50Bytes = [long]([Math]::Round(46.4 * 1GB))
 $capacity100Bytes = [long]([Math]::Round(93.1 * 1GB))
+$oversizedItems = @($items | Where-Object { [long]$_.SizeBytes -gt $capacity100Bytes })
+$packableItems = @($items | Where-Object { [long]$_.SizeBytes -le $capacity100Bytes })
 
 function Get-TryPack {
     param(
@@ -261,7 +263,7 @@ function Write-PlanSection {
     $Lines.Add(("=== {0} ===" -f $Header))
 
     if (-not $Plan) {
-        $Lines.Add('No feasible plan found.')
+        $Lines.Add('No feasible plan remains for packable items.')
         $Lines.Add('')
         return
     }
@@ -294,9 +296,16 @@ function Write-PlanSection {
     }
 }
 
-$mixedPlan = Get-OptimalMixedPlan -Entries $items
-$only50Plan = Get-Optimal50OnlyPlan -Entries $items
-$only100Plan = Get-Optimal100OnlyPlan -Entries $items
+if ($packableItems.Count -eq 0 -and $oversizedItems.Count -gt 0) {
+    $mixedPlan = $null
+    $only50Plan = $null
+    $only100Plan = $null
+}
+else {
+    $mixedPlan = Get-OptimalMixedPlan -Entries $packableItems
+    $only50Plan = Get-Optimal50OnlyPlan -Entries $packableItems
+    $only100Plan = Get-Optimal100OnlyPlan -Entries $packableItems
+}
 
 $recommendationLines = New-Object System.Collections.Generic.List[string]
 $recommendationLines.Add("# Script: $scriptName")
@@ -304,10 +313,20 @@ $recommendationLines.Add("# Report date (UTC): $reportDateUtc")
 $recommendationLines.Add("# Target directory: $invocationDir")
 $recommendationLines.Add('# Subject: optimal Blu-ray folder packing recommendations (marketed GB labels with binary GiB capacities)')
 $recommendationLines.Add('')
+$recommendationLines.Add('=== OVERSIZED ===')
+if ($oversizedItems.Count -eq 0) {
+    $recommendationLines.Add('None.')
+}
+else {
+    foreach ($entry in $oversizedItems) {
+        $recommendationLines.Add(("{0} | {1:N3} GiB" -f $entry.Path, ([double]$entry.SizeBytes / 1GB)))
+    }
+}
+$recommendationLines.Add('')
 
-Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Entries $items -Lines $recommendationLines
-Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)' -Plan $only50Plan -Entries $items -Lines $recommendationLines
-Write-PlanSection -Header 'OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)' -Plan $only100Plan -Entries $items -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Entries $packableItems -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)' -Plan $only50Plan -Entries $packableItems -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)' -Plan $only100Plan -Entries $packableItems -Lines $recommendationLines
 
 Set-Content -Path $recommendationsFile -Value $recommendationLines -Encoding UTF8
 
