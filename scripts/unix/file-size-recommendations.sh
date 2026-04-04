@@ -51,12 +51,11 @@ FILE_SIZES_FILE="${OUTPUT_DIR}/file-sizes.txt"
 RECOMMENDATIONS_FILE="${OUTPUT_DIR}/blu-ray-file-recommendations.txt"
 CANDIDATES_FILE="${OUTPUT_DIR}/file-sizes.tsv"
 CANDIDATES_DATA_FILE="$(mktemp)"
-trap 'rm -f "${CANDIDATES_DATA_FILE}"' EXIT
+trap 'rm -f "${CANDIDATES_DATA_FILE}" "${FILE_SIZES_FILE}.body"' EXIT
 
 SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-find_args=("${INVOCATION_DIR}" -type f)
 if [[ "${OUTPUT_DIR}" == "${INVOCATION_DIR}"/* ]]; then
   find_args=("${INVOCATION_DIR}" -path "${OUTPUT_DIR}" -prune -o -type f -print0)
 else
@@ -66,12 +65,9 @@ fi
 while IFS= read -r -d '' file; do
   size_kb="$(du -k "$file" | cut -f1)"
   size_gb="$(awk -v kb="$size_kb" 'BEGIN { printf "%.3f", kb/1048576 }')"
-  dir_name="$(dirname "$file")"
-  base_name="$(basename "$file")"
-  abs_path="$(cd "$dir_name" && pwd)/${base_name}"
 
-  printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
-  printf '%s | %s GiB\n' "$abs_path" "$size_gb" >> "${FILE_SIZES_FILE}.body"
+  printf '%s\t%s\n' "$file" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
+  printf '%s | %s GiB\n' "$file" "$size_gb" >> "${FILE_SIZES_FILE}.body"
 done < <(find "${find_args[@]}")
 
 sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
