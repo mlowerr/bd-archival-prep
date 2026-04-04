@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$TargetDir = (Get-Location).Path,
-    [string]$OutputDir
+    [string]$OutputDir,
+    [ValidateRange(1, [int]::MaxValue)]
+    [int]$Jobs = 3
 )
 
 Set-StrictMode -Version Latest
@@ -38,7 +40,19 @@ $unreadableFiles = New-Object System.Collections.Generic.List[string]
 $outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\\', '/')
 $outDirPrefix = "$outDirNormalized\"
 
-function Get-FFprobeDurationRaw {
+$candidateFiles = Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
+    Sort-Object FullName |
+    Where-Object {
+        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
+        -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    } |
+    Select-Object -ExpandProperty FullName
+
+$pendingFiles = New-Object System.Collections.Generic.Queue[string]
+$candidateFiles | ForEach-Object { $pendingFiles.Enqueue($_) }
+$runningJobs = New-Object System.Collections.Generic.List[System.Management.Automation.Job]
+
+function Start-DurationJob {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FFprobePath,
@@ -46,61 +60,115 @@ function Get-FFprobeDurationRaw {
         [string]$FilePath
     )
 
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $FFprobePath
-    $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `"$FilePath`""
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
+    Start-Job -ScriptBlock {
+        param($ffprobePathArg, $filePathArg)
 
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $ffprobePathArg
+        $psi.Arguments = "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `"$filePathArg`""
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
 
-    if (-not $process.Start()) {
-        return $null
-    }
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $psi
 
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-
-    $process.WaitForExit()
-    $stdoutTask.Wait()
-    $stderrTask.Wait()
-
-    if ($process.ExitCode -ne 0) {
-        return $null
-    }
-
-    return $stdoutTask.Result
-}
-
-Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
-    Sort-Object FullName |
-    Where-Object {
-        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
-        -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    } |
-    ForEach-Object {
-        $file = $_.FullName
-        $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
-
-        $durationRaw = if ($null -eq $durationOutput) { '' } else { "$durationOutput".Trim() }
-
-        if (-not [string]::IsNullOrWhiteSpace($durationRaw) -and $durationRaw -ne 'N/A') {
-            $parsed = 0.0
-            if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
-                $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
-                $records.Add([PSCustomObject]@{
-                    FullPath = $file
-                    Duration = $normalized
-                })
-                return
+        if (-not $process.Start()) {
+            return [PSCustomObject]@{
+                FullPath = $filePathArg
+                IsReadableDuration = $false
+                Duration = $null
             }
         }
 
-        $unreadableFiles.Add($file)
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $process.WaitForExit()
+        $stdoutTask.Wait()
+        $stderrTask.Wait()
+
+        if ($process.ExitCode -ne 0) {
+            return [PSCustomObject]@{
+                FullPath = $filePathArg
+                IsReadableDuration = $false
+                Duration = $null
+            }
+        }
+
+        $durationRaw = "$($stdoutTask.Result)".Trim()
+        if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
+            return [PSCustomObject]@{
+                FullPath = $filePathArg
+                IsReadableDuration = $false
+                Duration = $null
+            }
+        }
+
+        $parsed = 0.0
+        if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
+            $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+            return [PSCustomObject]@{
+                FullPath = $filePathArg
+                IsReadableDuration = $true
+                Duration = $normalized
+            }
+        }
+
+        return [PSCustomObject]@{
+            FullPath = $filePathArg
+            IsReadableDuration = $false
+            Duration = $null
+        }
+    } -ArgumentList $FFprobePath, $FilePath
+}
+
+function Receive-CompletedJobResults {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.List[System.Management.Automation.Job]]$JobList,
+        [switch]$WaitForAny
+    )
+
+    if ($JobList.Count -eq 0) {
+        return
     }
+
+    $completed = if ($WaitForAny) {
+        @(Wait-Job -Job $JobList -Any)
+    } else {
+        @(Wait-Job -Job $JobList)
+    }
+
+    foreach ($job in $completed) {
+        $results = @(Receive-Job -Job $job)
+        foreach ($result in $results) {
+            if ($null -eq $result) {
+                continue
+            }
+            if ($result.IsReadableDuration) {
+                $records.Add([PSCustomObject]@{
+                    FullPath = $result.FullPath
+                    Duration = [int]$result.Duration
+                })
+            } else {
+                $unreadableFiles.Add([string]$result.FullPath)
+            }
+        }
+        Remove-Job -Job $job -Force
+        [void]$JobList.Remove($job)
+    }
+}
+
+while ($pendingFiles.Count -gt 0 -or $runningJobs.Count -gt 0) {
+    while ($pendingFiles.Count -gt 0 -and $runningJobs.Count -lt $Jobs) {
+        $nextFile = $pendingFiles.Dequeue()
+        $runningJobs.Add((Start-DurationJob -FFprobePath $ffprobe.Source -FilePath $nextFile))
+    }
+
+    Receive-CompletedJobResults -JobList $runningJobs -WaitForAny
+}
 
 $durationLines = New-Object System.Collections.Generic.List[string]
 $durationLines.Add("# Script: $scriptName")
