@@ -139,6 +139,9 @@ def try_pack(capacities):
     bins = [{"cap": c, "used": 0, "items": []} for c in capacities]
     failed = set()
 
+    def result(packed_bins):
+        return {"bins": packed_bins, "used_fallback": used_fallback}
+
     def greedy_pack():
         for idx, needed in enumerate(sizes_bytes):
             best_bin = None
@@ -162,11 +165,11 @@ def try_pack(capacities):
         return bins
 
     if len(sizes_bytes) == 0:
-        return bins, used_fallback
+        return result(bins)
 
     if len(packable_items) > MEDIUM_WORKLOAD_MAX_ITEMS:
         used_fallback = True
-        return greedy_pack(), used_fallback
+        return result(greedy_pack())
 
     recursion_limit = max(sys.getrecursionlimit(), len(packable_items) + RECURSION_PADDING)
     sys.setrecursionlimit(recursion_limit)
@@ -209,11 +212,11 @@ def try_pack(capacities):
         return False
 
     if dfs(0):
-        return bins, used_fallback
+        return result(bins)
     if budget_exhausted:
         used_fallback = True
-        return greedy_pack(), used_fallback
-    return None, used_fallback
+        return result(greedy_pack())
+    return result(None)
 
 
 def find_optimal_mixed_plan():
@@ -238,9 +241,15 @@ def find_optimal_mixed_plan():
         pairs.sort(key=lambda x: (x[0], x[1]))
         for capacity, n100, n50 in pairs:
             capacities = [CAP_100_BYTES] * n100 + [CAP_50_BYTES] * n50
-            packed, used_fallback = try_pack(capacities)
-            if packed is not None:
-                return {"bins": packed, "n100": n100, "n50": n50, "capacity": capacity, "used_fallback": used_fallback}
+            pack_result = try_pack(capacities)
+            if pack_result["bins"] is not None:
+                return {
+                    "bins": pack_result["bins"],
+                    "n100": n100,
+                    "n50": n50,
+                    "capacity": capacity,
+                    "used_fallback": pack_result["used_fallback"],
+                }
 
     return None
 
@@ -257,9 +266,15 @@ def find_optimal_50_only_plan():
     start = max(1, math.ceil(total / CAP_50_BYTES))
     for n50 in range(start, len(packable_items) + 1):
         capacities = [CAP_50_BYTES] * n50
-        packed, used_fallback = try_pack(capacities)
-        if packed is not None:
-            return {"bins": packed, "n100": 0, "n50": n50, "capacity": n50 * CAP_50_BYTES, "used_fallback": used_fallback}
+        pack_result = try_pack(capacities)
+        if pack_result["bins"] is not None:
+            return {
+                "bins": pack_result["bins"],
+                "n100": 0,
+                "n50": n50,
+                "capacity": n50 * CAP_50_BYTES,
+                "used_fallback": pack_result["used_fallback"],
+            }
     return None
 
 
@@ -273,9 +288,15 @@ def find_optimal_100_only_plan():
     start = max(1, math.ceil(total / CAP_100_BYTES))
     for n100 in range(start, len(packable_items) + 1):
         capacities = [CAP_100_BYTES] * n100
-        packed, used_fallback = try_pack(capacities)
-        if packed is not None:
-            return {"bins": packed, "n100": n100, "n50": 0, "capacity": n100 * CAP_100_BYTES, "used_fallback": used_fallback}
+        pack_result = try_pack(capacities)
+        if pack_result["bins"] is not None:
+            return {
+                "bins": pack_result["bins"],
+                "n100": n100,
+                "n50": 0,
+                "capacity": n100 * CAP_100_BYTES,
+                "used_fallback": pack_result["used_fallback"],
+            }
     return None
 
 

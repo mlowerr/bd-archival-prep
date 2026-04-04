@@ -97,11 +97,9 @@ function Get-TryPack {
     function Invoke-BestFitFallbackPack {
         param(
             [long[]]$ItemSizes,
-            [array]$InitialBins,
-            [ref]$UsedFallbackRef
+            [array]$InitialBins
         )
 
-        $UsedFallbackRef.Value = $true
         $workingBins = @()
         foreach ($bin in $InitialBins) {
             $workingBins += [PSCustomObject]@{
@@ -115,13 +113,16 @@ function Get-TryPack {
         }
 
         if ($ItemSizes.Count -eq 0) {
-            return @($workingBins | ForEach-Object {
-                [PSCustomObject]@{
-                    CapacityBytes = [long]$_.CapacityBytes
-                    UsedBytes = [long]$_.UsedBytes
-                    Picks = @($_.Picks)
-                }
-            })
+            return [PSCustomObject]@{
+                Success = $true
+                Bins = @($workingBins | ForEach-Object {
+                    [PSCustomObject]@{
+                        CapacityBytes = [long]$_.CapacityBytes
+                        UsedBytes = [long]$_.UsedBytes
+                        Picks = @($_.Picks)
+                    }
+                })
+            }
         }
 
         foreach ($itemIndex in 0..($ItemSizes.Count - 1)) {
@@ -139,28 +140,36 @@ function Get-TryPack {
             }
 
             if ($null -eq $bestBin) {
-                return $null
+                return [PSCustomObject]@{
+                    Success = $false
+                    Bins = @()
+                }
             }
 
             $workingBins[$bestBin].UsedBytes += $needed
             $null = $workingBins[$bestBin].Picks.Add($itemIndex)
         }
 
-        return @($workingBins | ForEach-Object {
-            [PSCustomObject]@{
-                CapacityBytes = [long]$_.CapacityBytes
-                UsedBytes = [long]$_.UsedBytes
-                Picks = @($_.Picks)
-            }
-        })
+        return [PSCustomObject]@{
+            Success = $true
+            Bins = @($workingBins | ForEach-Object {
+                [PSCustomObject]@{
+                    CapacityBytes = [long]$_.CapacityBytes
+                    UsedBytes = [long]$_.UsedBytes
+                    Picks = @($_.Picks)
+                }
+            })
+        }
     }
 
     if ($sizes.Count -gt $mediumWorkloadMaxItems) {
-        $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins -UsedFallbackRef ([ref]$usedFallback)
-        if ($null -eq $fallbackBins) {
+        $usedFallback = $false
+        $fallbackResult = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+        if (-not $fallbackResult.Success) {
             return $null
         }
-        $bins = $fallbackBins
+        $usedFallback = $true
+        $bins = $fallbackResult.Bins
     }
     else {
         $failed = [System.Collections.Generic.HashSet[string]]::new()
@@ -183,11 +192,13 @@ function Get-TryPack {
                         Picks = [System.Collections.Generic.List[int]]::new()
                     }
                 }
-                $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins -UsedFallbackRef ([ref]$usedFallback)
-                if ($null -eq $fallbackBins) {
+                $usedFallback = $false
+                $fallbackResult = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+                if (-not $fallbackResult.Success) {
                     return $null
                 }
-                $solutionBins = $fallbackBins
+                $usedFallback = $true
+                $solutionBins = $fallbackResult.Bins
                 break
             }
 
@@ -265,6 +276,16 @@ function Get-TryPack {
     $totalPicks = [int](($bins | ForEach-Object { $_.Picks.Count } | Measure-Object -Sum).Sum)
     if ($totalPicks -ne $Entries.Count) {
         throw "Internal pack sanity check failed: picks count $totalPicks does not match entries count $($Entries.Count)."
+    }
+
+    if ($bins.Count -gt 0) {
+        $assignedCount = [int](($bins | ForEach-Object { $_.Picks.Count } | Measure-Object -Sum).Sum)
+        if ($assignedCount -ne $Entries.Count) {
+            return $null
+        }
+    }
+    elseif ($Entries.Count -ne 0) {
+        return $null
     }
 
     return [PSCustomObject]@{
