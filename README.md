@@ -84,11 +84,13 @@ Run from the directory you want to analyze:
 **Outputs**
 - `.archival-prep/folder-sizes.txt`
 - `.archival-prep/blu-ray-recommendations.txt`
-- `.archival-prep/folder-sizes.tsv` (Unix script intermediate candidate data)
+- `.archival-prep/folder-sizes.tsv` (candidate folder data, TSV: `path<TAB>size_bytes`)
 
 **Behavior**
 - Scans only first-level directories under the target directory.
 - Excludes `.archival-prep` from candidates.
+- Writes `folder-sizes.tsv` in **bytes** on both Unix and Windows.
+- Writes `folder-sizes.txt` in the same deterministic order as `folder-sizes.tsv` (size descending, then path ascending).
 - Builds complete packing plans (all candidate directories assigned) for:
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
@@ -121,11 +123,13 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 **Outputs**
 - `.archival-prep/file-sizes.txt`
 - `.archival-prep/blu-ray-file-recommendations.txt`
-- `.archival-prep/file-sizes.tsv` (candidate file data)
+- `.archival-prep/file-sizes.tsv` (candidate file data, TSV: `path<TAB>size_bytes`)
 
 **Behavior**
 - Recursively scans files under the target directory.
 - Excludes `.archival-prep` from candidates when output is inside the target directory.
+- Writes `file-sizes.tsv` in **bytes** on both Unix and Windows.
+- Writes `file-sizes.txt` in the same deterministic order as `file-sizes.tsv` (size descending, then path ascending).
 - Builds complete packing plans (all candidate files assigned) for:
   - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
   - **50 GB only** (`46.4 GiB` usable capacity only).
@@ -194,6 +198,15 @@ Every generated output file now begins with metadata headers containing:
 2. the report date (UTC)
 3. what location was reported on
 
+## Size units and ordering conventions
+
+- Candidate TSVs (`folder-sizes.tsv`, `file-sizes.tsv`) use raw **bytes** (`size_bytes`) across both platforms.
+- Human-readable size reports (`folder-sizes.txt`, `file-sizes.txt`) show **GiB** (binary units, `1 GiB = 1024^3 bytes`) rounded to 3 decimals.
+- `blu-ray-*.txt` recommendation reports also use GiB for displayed totals/capacities.
+- Candidate and human-readable size report bodies are both sorted deterministically by:
+  1. size descending
+  2. full path ascending (tie-breaker)
+
 ## Dependencies
 
 ### Required only for duration scripts: FFmpeg (`ffprobe`)
@@ -219,7 +232,7 @@ Verify:
 ## Notes
 
 - Scripts create `.archival-prep/` automatically when needed.
-- Reports are deterministic where sorting is applied in script logic.
+- Size report ordering is deterministic and aligned with candidate TSV ordering.
 - Scripts are read-only with respect to your source media/content.
 
 ## Troubleshooting

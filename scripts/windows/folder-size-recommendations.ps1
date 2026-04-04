@@ -26,21 +26,17 @@ $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 $items = @()
 $directories = Get-ChildItem -LiteralPath $invocationDir -Directory | Where-Object { $_.Name -ne '.archival-prep' }
 
-$folderBody = New-Object System.Collections.Generic.List[string]
 foreach ($dir in $directories) {
     $sum = (Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -File | Measure-Object -Property Length -Sum).Sum
     if (-not $sum) { $sum = 0 }
 
-    $sizeGb = [Math]::Round($sum / 1GB, 3)
     $items += [PSCustomObject]@{
         Path = $dir.FullName
         SizeBytes = [long]$sum
     }
-
-    $folderBody.Add(("{0} | {1:N3} GiB" -f $dir.FullName, $sizeGb))
 }
 
-$items = $items | Sort-Object -Property SizeBytes -Descending
+$items = $items | Sort-Object -Property @{ Expression = { $_.SizeBytes }; Descending = $true }, @{ Expression = { $_.Path }; Descending = $false }
 
 $folderLines = New-Object System.Collections.Generic.List[string]
 $folderLines.Add("# Script: $scriptName")
@@ -48,7 +44,9 @@ $folderLines.Add("# Report date (UTC): $reportDateUtc")
 $folderLines.Add("# Target directory: $invocationDir")
 $folderLines.Add('# Subject: first-level folder sizes in GiB (binary units)')
 $folderLines.Add('')
-$folderBody | ForEach-Object { $folderLines.Add($_) }
+$items | ForEach-Object {
+    $folderLines.Add(("{0} | {1:N3} GiB" -f $_.Path, ([double]$_.SizeBytes / 1GB)))
+}
 Set-Content -Path $folderSizesFile -Value $folderLines -Encoding UTF8
 
 $candidateLines = New-Object System.Collections.Generic.List[string]

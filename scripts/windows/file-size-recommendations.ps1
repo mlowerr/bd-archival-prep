@@ -31,18 +31,15 @@ if ($outputDir.StartsWith($invocationDir + [System.IO.Path]::DirectorySeparatorC
     }
 }
 
-$fileBody = New-Object System.Collections.Generic.List[string]
 foreach ($file in $allFiles) {
     $sizeBytes = [long]$file.Length
-    $sizeGb = [Math]::Round($sizeBytes / 1GB, 3)
     $items += [PSCustomObject]@{
         Path = $file.FullName
         SizeBytes = $sizeBytes
     }
-    $fileBody.Add(("{0} | {1:N3} GiB" -f $file.FullName, $sizeGb))
 }
 
-$items = $items | Sort-Object -Property SizeBytes -Descending
+$items = $items | Sort-Object -Property @{ Expression = { $_.SizeBytes }; Descending = $true }, @{ Expression = { $_.Path }; Descending = $false }
 
 $fileLines = New-Object System.Collections.Generic.List[string]
 $fileLines.Add("# Script: $scriptName")
@@ -50,7 +47,9 @@ $fileLines.Add("# Report date (UTC): $reportDateUtc")
 $fileLines.Add("# Target directory: $invocationDir")
 $fileLines.Add('# Subject: recursive file sizes in GiB (binary units)')
 $fileLines.Add('')
-$fileBody | ForEach-Object { $fileLines.Add($_) }
+$items | ForEach-Object {
+    $fileLines.Add(("{0} | {1:N3} GiB" -f $_.Path, ([double]$_.SizeBytes / 1GB)))
+}
 Set-Content -Path $fileSizesFile -Value $fileLines -Encoding UTF8
 
 $candidateLines = New-Object System.Collections.Generic.List[string]
