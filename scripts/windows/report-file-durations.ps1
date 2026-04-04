@@ -34,6 +34,7 @@ $scriptName = Split-Path -Leaf $PSCommandPath
 $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $records = New-Object System.Collections.Generic.List[object]
+$unreadableFiles = New-Object System.Collections.Generic.List[string]
 $outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\\', '/')
 $outDirPrefix = "$outDirNormalized\"
 
@@ -74,43 +75,6 @@ function Get-FFprobeDurationRaw {
     return $stdoutTask.Result
 }
 
-function Test-IsVideoFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FFprobePath,
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath
-    )
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $FFprobePath
-    $psi.Arguments = "-v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 -- `"$FilePath`""
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-
-    if (-not $process.Start()) {
-        return $false
-    }
-
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-
-    $process.WaitForExit()
-    $stdoutTask.Wait()
-    $stderrTask.Wait()
-
-    if ($process.ExitCode -ne 0) {
-        return $false
-    }
-
-    return ($stdoutTask.Result.Trim() -eq 'video')
-}
-
 Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     Sort-Object FullName |
     Where-Object {
@@ -119,48 +83,39 @@ Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     } |
     ForEach-Object {
         $file = $_.FullName
-        if (-not (Test-IsVideoFile -FFprobePath $ffprobe.Source -FilePath $file)) {
-            return
-        }
-
         $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
-        if ($null -eq $durationOutput) {
-            return
+
+        $durationRaw = if ($null -eq $durationOutput) { '' } else { "$durationOutput".Trim() }
+
+        if (-not [string]::IsNullOrWhiteSpace($durationRaw) -and $durationRaw -ne 'N/A') {
+            $parsed = 0.0
+            if ([double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed) -and -not [double]::IsNaN($parsed) -and -not [double]::IsInfinity($parsed) -and $parsed -ge 0) {
+                $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+                $records.Add([PSCustomObject]@{
+                    FullPath = $file
+                    Duration = $normalized
+                })
+                return
+            }
         }
 
-        $durationRaw = "$durationOutput".Trim()
-
-        if ([string]::IsNullOrWhiteSpace($durationRaw)) {
-            return
-        }
-        if ($durationRaw -eq 'N/A') {
-            return
-        }
-
-        $parsed = 0.0
-        if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
-            return
-        }
-        if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
-            return
-        }
-
-        $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
-        $records.Add([PSCustomObject]@{
-            FullPath = $file
-            Duration = $normalized
-        })
+        $unreadableFiles.Add($file)
     }
 
 $durationLines = New-Object System.Collections.Generic.List[string]
 $durationLines.Add("# Script: $scriptName")
 $durationLines.Add("# Report date (UTC): $reportDateUtc")
 $durationLines.Add("# Reporting on: $startDir")
-$durationLines.Add('# Subject: video file durations from ffprobe (seconds)')
+$durationLines.Add('# Subject: file durations from ffprobe (seconds)')
 $durationLines.Add('')
 $records |
     Sort-Object FullPath |
     ForEach-Object { $durationLines.Add(("{0} | {1}" -f $_.FullPath, $_.Duration)) }
+$durationLines.Add('')
+$durationLines.Add('=== FILES WITH NO READABLE DURATION ===')
+$unreadableFiles |
+    Sort-Object |
+    ForEach-Object { $durationLines.Add($_) }
 Set-Content -LiteralPath $fileDurationsPath -Value $durationLines -Encoding UTF8
 
 $sb = New-Object System.Text.StringBuilder

@@ -177,9 +177,13 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 **Behavior**
 - Recursively scans files under the target directory.
 - Excludes `.archival-prep` from scanning to avoid probing generated report files.
-- Uses `ffprobe` to read duration.
-- Normalizes duration to nearest second.
-- Skips files with unreadable/non-timed durations (including empty probe output and `N/A`, which ffprobe can return for streams without duration metadata).
+- Probes each file once with `ffprobe` to read duration.
+- Classifies each file as either:
+  - numeric duration (normalized to nearest second), or
+  - no readable duration (`ffprobe` failure, empty output, `N/A`, or non-numeric duration output).
+- Writes numeric-duration rows in the main section of `file-durations.txt`.
+- Appends a `=== FILES WITH NO READABLE DURATION ===` section listing files without readable durations.
+- Keeps duplicate grouping numeric-only (only normalized numeric durations are considered).
 - Overwrites outputs each run.
 
 **Output formats**
@@ -238,5 +242,6 @@ Verify:
 ## Troubleshooting
 
 - **`ffprobe` not found**: install FFmpeg and verify with `ffprobe -version`.
-- **No duration entries**: this is expected when files are not video streams or when `ffprobe` reports missing duration metadata (including `N/A`). Confirm the input files are expected video media with readable duration metadata.
+- **Most files appear under `=== FILES WITH NO READABLE DURATION ===`**: this is expected for files that are not timed media or where `ffprobe` cannot produce a numeric duration (`N/A`, empty output, probe failure, or non-numeric output).
+- **No duplicate groups found**: duplicate grouping only uses numeric normalized durations; files in the no-readable-duration section are excluded.
 - **Permission errors writing reports**: set an explicit writable output path (`--output-dir` / `-OutputDir`).

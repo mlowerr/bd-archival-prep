@@ -60,56 +60,44 @@ script_name="$(basename "$0")"
 report_date_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 tmp_tsv="$(mktemp)"
-trap 'rm -f "$tmp_tsv"' EXIT
+tmp_na="$(mktemp)"
+trap 'rm -f "$tmp_tsv" "$tmp_na"' EXIT
 
 get_ffprobe_duration_raw() {
   local file_path="$1"
   ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null
 }
 
-is_video_file() {
-  local file_path="$1"
-  local codec_type
-  codec_type="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null | tr -d '[:space:]')"
-  [[ "$codec_type" == "video" ]]
-}
 
 while IFS= read -r -d '' abs_path; do
   if [[ "$abs_path" == "$out_dir/"* ]]; then
     continue
   fi
 
-  if ! is_video_file "$abs_path"; then
-    continue
-  fi
-
-  if ! raw_duration="$(get_ffprobe_duration_raw "$abs_path")"; then
-    continue
-  fi
-
+  raw_duration="$(get_ffprobe_duration_raw "$abs_path" || true)"
   raw_duration="$(printf '%s' "$raw_duration" | tr -d '[:space:]')"
-  if [[ -z "$raw_duration" || "$raw_duration" == "N/A" ]]; then
-    continue
-  fi
-  if [[ ! "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    continue
+
+  if [[ -n "$raw_duration" && "$raw_duration" != "N/A" && "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    normalized="$(awk -v d="$raw_duration" 'BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
+    if [[ -n "$normalized" ]]; then
+      printf '%s\t%s\n' "$abs_path" "$normalized" >> "$tmp_tsv"
+      continue
+    fi
   fi
 
-  normalized="$(awk -v d="$raw_duration" 'BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
-  if [[ -z "$normalized" ]]; then
-    continue
-  fi
-
-  printf '%s\t%s\n' "$abs_path" "$normalized" >> "$tmp_tsv"
+  printf '%s\n' "$abs_path" >> "$tmp_na"
 done < <(find "$start_dir" -type f -print0)
 
 {
   printf '# Script: %s\n' "$script_name"
   printf '# Report date (UTC): %s\n' "$report_date_utc"
   printf '# Reporting on: %s\n' "$start_dir"
-  printf '# Subject: video file durations from ffprobe (seconds)\n\n'
+  printf '# Subject: file durations from ffprobe (seconds)\n\n'
 
   sort -t $'\t' -k1,1 "$tmp_tsv" | awk -F $'\t' '{ printf "%s | %s\n", $1, $2 }'
+
+  printf '\n=== FILES WITH NO READABLE DURATION ===\n'
+  sort "$tmp_na"
 } > "$file_durations"
 
 {
