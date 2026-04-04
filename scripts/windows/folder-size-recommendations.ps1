@@ -1,20 +1,31 @@
+[CmdletBinding()]
+param(
+    [string]$TargetDir = (Get-Location).Path,
+    [string]$OutputDir
+)
+
 $ErrorActionPreference = 'Stop'
 
-$invocationDir = (Get-Location).Path
-$outputDir = Join-Path $invocationDir '.archival-prep'
+$invocationDir = (Resolve-Path -LiteralPath $TargetDir).Path
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $OutputDir = Join-Path $invocationDir '.archival-prep'
+}
+if (-not (Test-Path -LiteralPath $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir | Out-Null
+}
+$outputDir = (Resolve-Path -LiteralPath $OutputDir).Path
+
 $folderSizesFile = Join-Path $outputDir 'folder-sizes.txt'
 $recommendationsFile = Join-Path $outputDir 'blu-ray-recommendations.txt'
+$candidatesFile = Join-Path $outputDir 'folder-sizes.tsv'
 
-if (-not (Test-Path -LiteralPath $outputDir)) {
-    New-Item -ItemType Directory -Path $outputDir | Out-Null
-}
-
-Set-Content -Path $folderSizesFile -Value $null
-Set-Content -Path $recommendationsFile -Value $null
+$scriptName = Split-Path -Leaf $PSCommandPath
+$reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $items = @()
 $directories = Get-ChildItem -LiteralPath $invocationDir -Directory | Where-Object { $_.Name -ne '.archival-prep' }
 
+$folderBody = New-Object System.Collections.Generic.List[string]
 foreach ($dir in $directories) {
     $sum = (Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -File | Measure-Object -Property Length -Sum).Sum
     if (-not $sum) { $sum = 0 }
@@ -25,10 +36,31 @@ foreach ($dir in $directories) {
         SizeBytes = [long]$sum
     }
 
-    Add-Content -Path $folderSizesFile -Value ("{0} | {1:N3} GB" -f $dir.FullName, $sizeGb)
+    $folderBody.Add(("{0} | {1:N3} GB" -f $dir.FullName, $sizeGb))
 }
 
 $items = $items | Sort-Object -Property SizeBytes -Descending
+
+$folderLines = New-Object System.Collections.Generic.List[string]
+$folderLines.Add("# Script: $scriptName")
+$folderLines.Add("# Report date (UTC): $reportDateUtc")
+$folderLines.Add("# Reporting on: $invocationDir")
+$folderLines.Add('# Subject: first-level folder sizes in GB')
+$folderLines.Add('')
+$folderBody | ForEach-Object { $folderLines.Add($_) }
+Set-Content -Path $folderSizesFile -Value $folderLines -Encoding UTF8
+
+$candidateLines = New-Object System.Collections.Generic.List[string]
+$candidateLines.Add("# Script: $scriptName")
+$candidateLines.Add("# Report date (UTC): $reportDateUtc")
+$candidateLines.Add("# Reporting on: $invocationDir")
+$candidateLines.Add('# Subject: first-level folder size candidates in bytes (TSV: path<TAB>size_bytes)')
+$candidateLines.Add('')
+$items | ForEach-Object {
+    $candidateLines.Add(("{0}`t{1}" -f $_.Path, $_.SizeBytes))
+}
+Set-Content -Path $candidatesFile -Value $candidateLines -Encoding UTF8
+
 $capacity50Bytes = [long]([Math]::Round(46.4 * 1GB))
 $capacity100Bytes = [long]([Math]::Round(93.1 * 1GB))
 
@@ -224,14 +256,14 @@ function Write-PlanSection {
         [string]$Header,
         [object]$Plan,
         [array]$Entries,
-        [string]$RecommendationsFile
+        [System.Collections.Generic.List[string]]$Lines
     )
 
-    Add-Content -Path $RecommendationsFile -Value ("=== {0} ===" -f $Header)
+    $Lines.Add(("=== {0} ===" -f $Header))
 
     if (-not $Plan) {
-        Add-Content -Path $RecommendationsFile -Value "No feasible plan found."
-        Add-Content -Path $RecommendationsFile -Value ""
+        $Lines.Add('No feasible plan found.')
+        $Lines.Add('')
         return
     }
 
@@ -239,26 +271,26 @@ function Write-PlanSection {
     $totalDisks = $Plan.Count100 + $Plan.Count50
     $unusedBytes = [long]$Plan.CapacityBytes - $totalBytes
 
-    Add-Content -Path $RecommendationsFile -Value ("Combination: {0} x 93.1 GB + {1} x 46.4 GB" -f $Plan.Count100, $Plan.Count50)
-    Add-Content -Path $RecommendationsFile -Value ("Total disks: {0}" -f $totalDisks)
-    Add-Content -Path $RecommendationsFile -Value ("Disk counts by size: 100GB={0}, 50GB={1}" -f $Plan.Count100, $Plan.Count50)
-    Add-Content -Path $RecommendationsFile -Value ("Total data size: {0:N3} GB" -f ($totalBytes / 1GB))
-    Add-Content -Path $RecommendationsFile -Value ("Total writable capacity: {0:N3} GB" -f ($Plan.CapacityBytes / 1GB))
-    Add-Content -Path $RecommendationsFile -Value ("Total unused space: {0:N3} GB" -f ($unusedBytes / 1GB))
-    Add-Content -Path $RecommendationsFile -Value ""
+    $Lines.Add(("Combination: {0} x 93.1 GB + {1} x 46.4 GB" -f $Plan.Count100, $Plan.Count50))
+    $Lines.Add(("Total disks: {0}" -f $totalDisks))
+    $Lines.Add(("Disk counts by size: 100GB={0}, 50GB={1}" -f $Plan.Count100, $Plan.Count50))
+    $Lines.Add(("Total data size: {0:N3} GB" -f ($totalBytes / 1GB)))
+    $Lines.Add(("Total writable capacity: {0:N3} GB" -f ($Plan.CapacityBytes / 1GB)))
+    $Lines.Add(("Total unused space: {0:N3} GB" -f ($unusedBytes / 1GB)))
+    $Lines.Add('')
 
     $diskIndex = 1
     foreach ($bin in $Plan.Bins) {
         $capacityGb = [double]$bin.CapacityBytes / 1GB
         $usedGb = [double]$bin.UsedBytes / 1GB
         $unusedGb = $capacityGb - $usedGb
-        Add-Content -Path $RecommendationsFile -Value (
-            "Disk [{0} of {1}] [{2:N1} GB] | Size used: {3:N3} GB | Unused space: {4:N3} GB" -f $diskIndex, $totalDisks, $capacityGb, $usedGb, $unusedGb
+        $Lines.Add(
+            ("Disk [{0} of {1}] [{2:N1} GB] | Size used: {3:N3} GB | Unused space: {4:N3} GB" -f $diskIndex, $totalDisks, $capacityGb, $usedGb, $unusedGb)
         )
         foreach ($pick in $bin.Picks) {
-            Add-Content -Path $RecommendationsFile -Value $Entries[$pick].Path
+            $Lines.Add($Entries[$pick].Path)
         }
-        Add-Content -Path $RecommendationsFile -Value ""
+        $Lines.Add('')
         $diskIndex++
     }
 }
@@ -267,9 +299,19 @@ $mixedPlan = Get-OptimalMixedPlan -Entries $items
 $only50Plan = Get-Optimal50OnlyPlan -Entries $items
 $only100Plan = Get-Optimal100OnlyPlan -Entries $items
 
-Write-PlanSection -Header "OPTIMAL MIXED DISK PLAN (50GB + 100GB)" -Plan $mixedPlan -Entries $items -RecommendationsFile $recommendationsFile
-Write-PlanSection -Header "OPTIMAL 50GB-ONLY DISK PLAN" -Plan $only50Plan -Entries $items -RecommendationsFile $recommendationsFile
-Write-PlanSection -Header "OPTIMAL 100GB-ONLY DISK PLAN" -Plan $only100Plan -Entries $items -RecommendationsFile $recommendationsFile
+$recommendationLines = New-Object System.Collections.Generic.List[string]
+$recommendationLines.Add("# Script: $scriptName")
+$recommendationLines.Add("# Report date (UTC): $reportDateUtc")
+$recommendationLines.Add("# Reporting on: $invocationDir")
+$recommendationLines.Add('# Subject: optimal Blu-ray folder packing recommendations')
+$recommendationLines.Add('')
+
+Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50GB + 100GB)' -Plan $mixedPlan -Entries $items -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 50GB-ONLY DISK PLAN' -Plan $only50Plan -Entries $items -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 100GB-ONLY DISK PLAN' -Plan $only100Plan -Entries $items -Lines $recommendationLines
+
+Set-Content -Path $recommendationsFile -Value $recommendationLines -Encoding UTF8
 
 Write-Output "Wrote: $folderSizesFile"
 Write-Output "Wrote: $recommendationsFile"
+Write-Output "Wrote: $candidatesFile"

@@ -3,16 +3,55 @@ set -euo pipefail
 
 start_dir="${PWD}"
 out_dir="${start_dir}/.archival-prep"
+
+usage() {
+  cat <<'USAGE'
+Usage: report-basename-collisions.sh [--target-dir DIR] [--output-dir DIR]
+
+Options:
+  --target-dir DIR   Directory to scan (default: current working directory)
+  --output-dir DIR   Directory where reports are written (default: TARGET/.archival-prep)
+  --log-dir DIR      Alias for --output-dir
+  -h, --help         Show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target-dir)
+      start_dir="$2"
+      shift 2
+      ;;
+    --output-dir|--log-dir)
+      out_dir="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+start_dir="$(cd -- "$start_dir" && pwd)"
+mkdir -p -- "${out_dir}"
+out_dir="$(cd -- "${out_dir}" && pwd)"
 out_file="${out_dir}/basename-collisions.txt"
 
-mkdir -p -- "${out_dir}"
+script_name="$(basename "$0")"
+report_date_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Track every discovered file path by basename (minus the final extension segment).
 declare -A grouped_paths=()
 declare -A grouped_counts=()
 
 while IFS= read -r -d '' file_path; do
-  if [[ "${file_path}" == "${out_file}" ]]; then
+  if [[ "${file_path}" == "${out_file}" || "${file_path}" == "${out_dir}/"* ]]; then
     continue
   fi
 
@@ -29,6 +68,11 @@ while IFS= read -r -d '' file_path; do
 done < <(find "${start_dir}" -type f -print0)
 
 {
+  printf '# Script: %s\n' "${script_name}"
+  printf '# Report date (UTC): %s\n' "${report_date_utc}"
+  printf '# Reporting on: %s\n' "${start_dir}"
+  printf '# Subject: basename collisions (same filename stem with 2+ files)\n\n'
+
   mapfile -t keys < <(printf '%s\n' "${!grouped_counts[@]}" | LC_ALL=C sort)
 
   first_group=true

@@ -3,33 +3,93 @@ set -euo pipefail
 
 INVOCATION_DIR="$(pwd)"
 OUTPUT_DIR="${INVOCATION_DIR}/.archival-prep"
+
+usage() {
+  cat <<'USAGE'
+Usage: folder-size-recommendations.sh [--target-dir DIR] [--output-dir DIR]
+
+Options:
+  --target-dir DIR   Directory to scan (default: current working directory)
+  --output-dir DIR   Directory where reports are written (default: TARGET/.archival-prep)
+  --log-dir DIR      Alias for --output-dir
+  -h, --help         Show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --target-dir)
+      INVOCATION_DIR="$2"
+      shift 2
+      ;;
+    --output-dir|--log-dir)
+      OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+INVOCATION_DIR="$(cd -- "$INVOCATION_DIR" && pwd)"
+mkdir -p "${OUTPUT_DIR}"
+OUTPUT_DIR="$(cd -- "$OUTPUT_DIR" && pwd)"
+
 FOLDER_SIZES_FILE="${OUTPUT_DIR}/folder-sizes.txt"
 RECOMMENDATIONS_FILE="${OUTPUT_DIR}/blu-ray-recommendations.txt"
 CANDIDATES_FILE="${OUTPUT_DIR}/folder-sizes.tsv"
+CANDIDATES_DATA_FILE="$(mktemp)"
+trap 'rm -f "${CANDIDATES_DATA_FILE}"' EXIT
 
-mkdir -p "${OUTPUT_DIR}"
-: > "${FOLDER_SIZES_FILE}"
-: > "${RECOMMENDATIONS_FILE}"
-: > "${CANDIDATES_FILE}"
+SCRIPT_NAME="$(basename "$0")"
+REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 while IFS= read -r -d '' dir; do
   size_kb="$(du -sk "$dir" | cut -f1)"
   size_gb="$(awk -v kb="$size_kb" 'BEGIN { printf "%.3f", kb/1048576 }')"
   abs_path="$(cd "$dir" && pwd)"
 
-  printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_FILE}"
-  printf '%s | %s GB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}"
+  printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
+  printf '%s | %s GB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}.body"
 done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name '.archival-prep' -print0)
 
-sort -t $'\t' -k2,2nr -o "${CANDIDATES_FILE}" "${CANDIDATES_FILE}"
+sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
 
-python3 - "${CANDIDATES_FILE}" "${RECOMMENDATIONS_FILE}" <<'PY'
+{
+  printf '# Script: %s\n' "${SCRIPT_NAME}"
+  printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
+  printf '# Reporting on: %s\n' "${INVOCATION_DIR}"
+  printf '# Subject: first-level folder sizes in GB\n\n'
+  if [[ -f "${FOLDER_SIZES_FILE}.body" ]]; then
+    cat "${FOLDER_SIZES_FILE}.body"
+  fi
+} > "${FOLDER_SIZES_FILE}"
+
+{
+  printf '# Script: %s\n' "${SCRIPT_NAME}"
+  printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
+  printf '# Reporting on: %s\n' "${INVOCATION_DIR}"
+  printf '# Subject: first-level folder size candidates in KB (TSV: path<TAB>size_kb)\n\n'
+  cat "${CANDIDATES_DATA_FILE}"
+} > "${CANDIDATES_FILE}"
+
+python3 - "${CANDIDATES_FILE}" "${RECOMMENDATIONS_FILE}" "${SCRIPT_NAME}" "${REPORT_DATE_UTC}" "${INVOCATION_DIR}" <<'PY'
 import csv
 import math
 import sys
 
 candidates_file = sys.argv[1]
 recommendations_file = sys.argv[2]
+script_name = sys.argv[3]
+report_date_utc = sys.argv[4]
+report_target = sys.argv[5]
 CAP_50_KB = int(round(46.4 * 1048576))
 CAP_100_KB = int(round(93.1 * 1048576))
 
@@ -37,6 +97,10 @@ items = []
 with open(candidates_file, newline="", encoding="utf-8") as f:
     reader = csv.reader(f, delimiter="\t")
     for row in reader:
+        if not row:
+            continue
+        if row[0].startswith("#"):
+            continue
         if len(row) != 2:
             continue
         path, size_kb = row
@@ -181,10 +245,17 @@ def write_plan(out, header, plan):
         out.write("\n")
 
 with open(recommendations_file, "w", encoding="utf-8") as out:
+    out.write(f"# Script: {script_name}\n")
+    out.write(f"# Report date (UTC): {report_date_utc}\n")
+    out.write(f"# Reporting on: {report_target}\n")
+    out.write("# Subject: optimal Blu-ray folder packing recommendations\n\n")
     write_plan(out, "OPTIMAL MIXED DISK PLAN (50GB + 100GB)", find_optimal_mixed_plan())
     write_plan(out, "OPTIMAL 50GB-ONLY DISK PLAN", find_optimal_50_only_plan())
     write_plan(out, "OPTIMAL 100GB-ONLY DISK PLAN", find_optimal_100_only_plan())
 PY
 
+rm -f "${FOLDER_SIZES_FILE}.body"
+
 echo "Wrote: ${FOLDER_SIZES_FILE}"
 echo "Wrote: ${RECOMMENDATIONS_FILE}"
+echo "Wrote: ${CANDIDATES_FILE}"

@@ -1,3 +1,9 @@
+[CmdletBinding()]
+param(
+    [string]$TargetDir = (Get-Location).Path,
+    [string]$OutputDir
+)
+
 $ErrorActionPreference = 'Stop'
 
 $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
@@ -10,15 +16,23 @@ Example (winget): winget install Gyan.FFmpeg
     exit 1
 }
 
-$startDir = (Get-Location).Path
-$outDir = Join-Path $startDir '.archival-prep'
-New-Item -Path $outDir -ItemType Directory -Force | Out-Null
+$startDir = (Resolve-Path -LiteralPath $TargetDir).Path
+if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+    $OutputDir = Join-Path $startDir '.archival-prep'
+}
+if (-not (Test-Path -LiteralPath $OutputDir)) {
+    New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
+}
+$outDir = (Resolve-Path -LiteralPath $OutputDir).Path
 
 $fileDurationsPath = Join-Path $outDir 'file-durations.txt'
 $duplicatesPath = Join-Path $outDir 'possible-duplicates-by-duration.txt'
 
+$scriptName = Split-Path -Leaf $PSCommandPath
+$reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
 $records = New-Object System.Collections.Generic.List[object]
-$outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\', '/')
+$outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\\', '/')
 $outDirPrefix = "$outDirNormalized\"
 
 function Get-FFprobeDurationRaw {
@@ -51,13 +65,11 @@ function Get-FFprobeDurationRaw {
     $stdoutTask.Wait()
     $stderrTask.Wait()
 
-    $stdout = $stdoutTask.Result
-
     if ($process.ExitCode -ne 0) {
         return $null
     }
 
-    return $stdout
+    return $stdoutTask.Result
 }
 
 function Test-IsVideoFile {
@@ -98,54 +110,65 @@ function Test-IsVideoFile {
 }
 
 Get-ChildItem -Path $startDir -File -Recurse |
+    Sort-Object FullName |
     Where-Object {
-        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\')
+        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
         -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
     } |
-    Sort-Object FullName |
     ForEach-Object {
-    $file = $_.FullName
-    if (-not (Test-IsVideoFile -FFprobePath $ffprobe.Source -FilePath $file)) {
-        return
+        $file = $_.FullName
+        if (-not (Test-IsVideoFile -FFprobePath $ffprobe.Source -FilePath $file)) {
+            return
+        }
+
+        $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
+        if ($null -eq $durationOutput) {
+            return
+        }
+
+        $durationRaw = "$durationOutput".Trim()
+
+        if ([string]::IsNullOrWhiteSpace($durationRaw)) {
+            return
+        }
+        if ($durationRaw -eq 'N/A') {
+            return
+        }
+
+        $parsed = 0.0
+        if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+            return
+        }
+        if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
+            return
+        }
+
+        $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+        $records.Add([PSCustomObject]@{
+            FullPath = $file
+            Duration = $normalized
+        })
     }
 
-    $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
-    if ($null -eq $durationOutput) {
-        return
-    }
-
-    $durationRaw = "$durationOutput".Trim()
-
-    if ([string]::IsNullOrWhiteSpace($durationRaw)) {
-        return
-    }
-    if ($durationRaw -eq 'N/A') {
-        return
-    }
-
-    $parsed = 0.0
-    if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
-        return
-    }
-    if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
-        return
-    }
-
-    $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
-    $records.Add([PSCustomObject]@{
-        FullPath = $file
-        Duration = $normalized
-    })
-}
-
+$durationLines = New-Object System.Collections.Generic.List[string]
+$durationLines.Add("# Script: $scriptName")
+$durationLines.Add("# Report date (UTC): $reportDateUtc")
+$durationLines.Add("# Reporting on: $startDir")
+$durationLines.Add('# Subject: video file durations from ffprobe (seconds)')
+$durationLines.Add('')
 $records |
     Sort-Object FullPath |
-    ForEach-Object { "{0} | {1}" -f $_.FullPath, $_.Duration } |
-    Set-Content -Path $fileDurationsPath -Encoding UTF8
+    ForEach-Object { $durationLines.Add(("{0} | {1}" -f $_.FullPath, $_.Duration)) }
+Set-Content -Path $fileDurationsPath -Value $durationLines -Encoding UTF8
 
 $sb = New-Object System.Text.StringBuilder
-$groupIndex = 0
+[void]$sb.AppendLine("# Script: $scriptName")
+[void]$sb.AppendLine("# Report date (UTC): $reportDateUtc")
+[void]$sb.AppendLine("# Reporting on: $startDir")
+[void]$sb.AppendLine('# Subject: possible duplicates grouped by identical normalized duration')
+[void]$sb.AppendLine('')
 
+$groupIndex = 0
 $records |
     Sort-Object Duration, FullPath |
     Group-Object Duration |
