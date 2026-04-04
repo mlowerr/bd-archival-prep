@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v ffprobe >/dev/null 2>&1; then
-  echo "Error: ffprobe is required but was not found in PATH." >&2
-  echo "Install FFmpeg (which includes ffprobe), then re-run this script." >&2
-  exit 1
-fi
-
 start_dir="${PWD}"
 out_dir=""
 out_dir_set=false
+jobs=3
 
 usage() {
   cat <<'USAGE'
-Usage: report-file-durations.sh [--target-dir DIR] [--output-dir DIR]
+Usage: report-file-durations.sh [--target-dir DIR] [--output-dir DIR] [--jobs N]
 
 Options:
   --target-dir DIR   Directory to scan (default: current working directory)
   --output-dir DIR   Directory where reports are written (default: TARGET/.archival-prep)
   --log-dir DIR      Alias for --output-dir
+  --jobs N           Number of concurrent ffprobe workers (default: 3; use 1 for sequential)
   -h, --help         Show this help
 USAGE
 }
@@ -26,12 +22,28 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --target-dir requires a value." >&2
+        exit 2
+      fi
       start_dir="$2"
       shift 2
       ;;
     --output-dir|--log-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: $1 requires a value." >&2
+        exit 2
+      fi
       out_dir="$2"
       out_dir_set=true
+      shift 2
+      ;;
+    --jobs)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: --jobs requires a value." >&2
+        exit 2
+      fi
+      jobs="$2"
       shift 2
       ;;
     -h|--help)
@@ -45,6 +57,17 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if ! command -v ffprobe >/dev/null 2>&1; then
+  echo "Error: ffprobe is required but was not found in PATH." >&2
+  echo "Install FFmpeg (which includes ffprobe), then re-run this script." >&2
+  exit 1
+fi
+
+if [[ ! "$jobs" =~ ^[0-9]+$ ]] || (( jobs < 1 )); then
+  echo "Error: --jobs must be a positive integer (received: $jobs)" >&2
+  exit 2
+fi
 
 start_dir="$(cd -- "$start_dir" && pwd)"
 if [[ "${out_dir_set}" == false ]]; then
@@ -62,46 +85,74 @@ report_date_utc="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 tmp_tsv="$(mktemp)"
 trap 'rm -f "$tmp_tsv"' EXIT
 
-get_ffprobe_duration_raw() {
-  local file_path="$1"
-  ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null
+collect_parallel() {
+  find "$start_dir" -type f -print0 | sort -z | xargs -0 -n1 -P "$jobs" bash -c '
+    file_path="$1"
+    out_prefix="$2"
+
+    if [[ "$file_path" == "$out_prefix"/* ]]; then
+      exit 0
+    fi
+
+    codec_type="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null | tr -d "[:space:]")"
+    if [[ "$codec_type" != "video" ]]; then
+      exit 0
+    fi
+
+    raw_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null || true)"
+    raw_duration="$(printf "%s" "$raw_duration" | tr -d "[:space:]")"
+
+    if [[ -z "$raw_duration" || "$raw_duration" == "N/A" ]]; then
+      exit 0
+    fi
+    if [[ ! "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      exit 0
+    fi
+
+    normalized="$(awk -v d="$raw_duration" "BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf \"%d\", int(d + 0.5) }" 2>/dev/null || true)"
+    if [[ -z "$normalized" ]]; then
+      exit 0
+    fi
+
+    printf "%s\t%s\n" "$file_path" "$normalized"
+  ' _ '{}' "$out_dir"
 }
 
-is_video_file() {
-  local file_path="$1"
-  local codec_type
-  codec_type="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "$file_path" 2>/dev/null | tr -d '[:space:]')"
-  [[ "$codec_type" == "video" ]]
+collect_sequential() {
+  while IFS= read -r -d '' abs_path; do
+    if [[ "$abs_path" == "$out_dir/"* ]]; then
+      continue
+    fi
+
+    codec_type="$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 "$abs_path" 2>/dev/null | tr -d '[:space:]')"
+    if [[ "$codec_type" != "video" ]]; then
+      continue
+    fi
+
+    raw_duration="$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$abs_path" 2>/dev/null || true)"
+    raw_duration="$(printf '%s' "$raw_duration" | tr -d '[:space:]')"
+
+    if [[ -z "$raw_duration" || "$raw_duration" == "N/A" ]]; then
+      continue
+    fi
+    if [[ ! "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      continue
+    fi
+
+    normalized="$(awk -v d="$raw_duration" 'BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
+    if [[ -z "$normalized" ]]; then
+      continue
+    fi
+
+    printf '%s\t%s\n' "$abs_path" "$normalized"
+  done < <(find "$start_dir" -type f -print0 | sort -z)
 }
 
-while IFS= read -r -d '' abs_path; do
-  if [[ "$abs_path" == "$out_dir/"* ]]; then
-    continue
-  fi
-
-  if ! is_video_file "$abs_path"; then
-    continue
-  fi
-
-  if ! raw_duration="$(get_ffprobe_duration_raw "$abs_path")"; then
-    continue
-  fi
-
-  raw_duration="$(printf '%s' "$raw_duration" | tr -d '[:space:]')"
-  if [[ -z "$raw_duration" || "$raw_duration" == "N/A" ]]; then
-    continue
-  fi
-  if [[ ! "$raw_duration" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-    continue
-  fi
-
-  normalized="$(awk -v d="$raw_duration" 'BEGIN { if (d ~ /^[0-9]+([.][0-9]+)?$/) printf "%d", int(d + 0.5) }' 2>/dev/null || true)"
-  if [[ -z "$normalized" ]]; then
-    continue
-  fi
-
-  printf '%s\t%s\n' "$abs_path" "$normalized" >> "$tmp_tsv"
-done < <(find "$start_dir" -type f -print0 | sort -z)
+if (( jobs == 1 )); then
+  collect_sequential > "$tmp_tsv"
+else
+  collect_parallel > "$tmp_tsv"
+fi
 
 {
   printf '# Script: %s\n' "$script_name"

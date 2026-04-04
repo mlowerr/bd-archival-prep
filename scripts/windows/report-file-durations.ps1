@@ -1,7 +1,23 @@
+<#
+.SYNOPSIS
+Reports video durations and possible duplicates by equal normalized duration.
+
+.PARAMETER TargetDir
+Directory to scan recursively.
+
+.PARAMETER OutputDir
+Directory where reports are written.
+
+.PARAMETER Jobs
+Number of concurrent ffprobe workers. Default is 3. Set to 1 to run sequentially.
+#>
+
 [CmdletBinding()]
 param(
     [string]$TargetDir = (Get-Location).Path,
-    [string]$OutputDir
+    [string]$OutputDir,
+    [ValidateRange(1, 256)]
+    [int]$Jobs = 3
 )
 
 $ErrorActionPreference = 'Stop'
@@ -110,46 +126,158 @@ function Test-IsVideoFile {
     return ($stdoutTask.Result.Trim() -eq 'video')
 }
 
-Get-ChildItem -Path $startDir -File -Recurse |
-    Sort-Object FullName |
-    Where-Object {
-        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
-        -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    } |
-    ForEach-Object {
-        $file = $_.FullName
-        if (-not (Test-IsVideoFile -FFprobePath $ffprobe.Source -FilePath $file)) {
-            return
-        }
+function Get-DurationRecord {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FFprobePath,
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(Mandatory = $true)]
+        [string]$OutPrefix
+    )
 
-        $durationOutput = Get-FFprobeDurationRaw -FFprobePath $ffprobe.Source -FilePath $file
-        if ($null -eq $durationOutput) {
-            return
-        }
-
-        $durationRaw = "$durationOutput".Trim()
-
-        if ([string]::IsNullOrWhiteSpace($durationRaw)) {
-            return
-        }
-        if ($durationRaw -eq 'N/A') {
-            return
-        }
-
-        $parsed = 0.0
-        if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
-            return
-        }
-        if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
-            return
-        }
-
-        $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
-        $records.Add([PSCustomObject]@{
-            FullPath = $file
-            Duration = $normalized
-        })
+    $filePathNormalized = ([System.IO.Path]::GetFullPath($FilePath)).Replace('/', '\\')
+    if ($filePathNormalized.StartsWith($OutPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $null
     }
+
+    if (-not (Test-IsVideoFile -FFprobePath $FFprobePath -FilePath $FilePath)) {
+        return $null
+    }
+
+    $durationOutput = Get-FFprobeDurationRaw -FFprobePath $FFprobePath -FilePath $FilePath
+    if ($null -eq $durationOutput) {
+        return $null
+    }
+
+    $durationRaw = "$durationOutput".Trim()
+    if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
+        return $null
+    }
+
+    $parsed = 0.0
+    if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+        return $null
+    }
+    if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
+        return $null
+    }
+
+    $normalized = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+    return [PSCustomObject]@{
+        FullPath = $FilePath
+        Duration = $normalized
+    }
+}
+
+$allFiles = Get-ChildItem -Path $startDir -File -Recurse | Sort-Object FullName
+
+if ($Jobs -eq 1) {
+    foreach ($item in $allFiles) {
+        $record = Get-DurationRecord -FFprobePath $ffprobe.Source -FilePath $item.FullName -OutPrefix $outDirPrefix
+        if ($null -ne $record) {
+            $records.Add($record)
+        }
+    }
+}
+else {
+    $jobQueue = New-Object System.Collections.Generic.List[object]
+
+    foreach ($item in $allFiles) {
+        while (($jobQueue | Where-Object { $_.State -eq 'Running' }).Count -ge $Jobs) {
+            $finished = Wait-Job -Job $jobQueue -Any
+            if ($null -ne $finished) {
+                $result = Receive-Job -Job $finished
+                if ($null -ne $result) {
+                    $records.Add($result)
+                }
+                Remove-Job -Job $finished
+                $jobQueue.Remove($finished) | Out-Null
+            }
+        }
+
+        $job = Start-Job -ScriptBlock {
+            param($ffprobePath, $filePath, $outPrefix)
+
+            function Invoke-FFprobe {
+                param(
+                    [string]$ProbePath,
+                    [string]$ProbeArgs
+                )
+
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = $ProbePath
+                $psi.Arguments = $ProbeArgs
+                $psi.RedirectStandardOutput = $true
+                $psi.RedirectStandardError = $true
+                $psi.UseShellExecute = $false
+                $psi.CreateNoWindow = $true
+
+                $process = New-Object System.Diagnostics.Process
+                $process.StartInfo = $psi
+                if (-not $process.Start()) {
+                    return $null
+                }
+
+                $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+                $stderrTask = $process.StandardError.ReadToEndAsync()
+                $process.WaitForExit()
+                $stdoutTask.Wait()
+                $stderrTask.Wait()
+
+                if ($process.ExitCode -ne 0) {
+                    return $null
+                }
+
+                return $stdoutTask.Result
+            }
+
+            $normalizedPath = ([System.IO.Path]::GetFullPath($filePath)).Replace('/', '\\')
+            if ($normalizedPath.StartsWith($outPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return
+            }
+
+            $codecType = Invoke-FFprobe -ProbePath $ffprobePath -ProbeArgs "-v error -select_streams v:0 -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 -- `"$filePath`""
+            if ($null -eq $codecType -or $codecType.Trim() -ne 'video') {
+                return
+            }
+
+            $durationRaw = Invoke-FFprobe -ProbePath $ffprobePath -ProbeArgs "-v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 -- `"$filePath`""
+            if ($null -eq $durationRaw) {
+                return
+            }
+
+            $durationRaw = $durationRaw.Trim()
+            if ([string]::IsNullOrWhiteSpace($durationRaw) -or $durationRaw -eq 'N/A') {
+                return
+            }
+
+            $parsed = 0.0
+            if (-not [double]::TryParse($durationRaw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)) {
+                return
+            }
+            if ([double]::IsNaN($parsed) -or [double]::IsInfinity($parsed) -or $parsed -lt 0) {
+                return
+            }
+
+            [PSCustomObject]@{
+                FullPath = $filePath
+                Duration = [int][Math]::Round($parsed, 0, [System.MidpointRounding]::AwayFromZero)
+            }
+        } -ArgumentList $ffprobe.Source, $item.FullName, $outDirPrefix
+
+        $jobQueue.Add($job)
+    }
+
+    foreach ($job in $jobQueue) {
+        Wait-Job -Job $job | Out-Null
+        $result = Receive-Job -Job $job
+        if ($null -ne $result) {
+            $records.Add($result)
+        }
+        Remove-Job -Job $job
+    }
+}
 
 $durationLines = New-Object System.Collections.Generic.List[string]
 $durationLines.Add("# Script: $scriptName")

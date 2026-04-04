@@ -44,7 +44,7 @@ Run from the directory you want to analyze:
 /path/to/repo/scripts/unix/report-file-durations.sh
 
 # Optional override example:
-/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports
+/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports --jobs 6
 ```
 
 ### Windows PowerShell
@@ -56,7 +56,7 @@ Run from the directory you want to analyze:
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
 
 # Optional override example:
-& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep"
+& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep" -Jobs 6
 ```
 
 ## CLI options
@@ -67,11 +67,13 @@ Run from the directory you want to analyze:
 - `--output-dir <DIR>`: report output location (defaults to `<target>/.archival-prep`).
 - `--log-dir <DIR>`: alias of `--output-dir`.
 - `--help`: print script usage.
+- `--jobs <N>` (duration script): bounded ffprobe worker count (defaults to `3`; use `1` to force sequential probing).
 
 ### PowerShell scripts
 
 - `-TargetDir <DIR>`: directory to scan (defaults to current location).
 - `-OutputDir <DIR>`: report output location (defaults to `<target>\.archival-prep`).
+- `-Jobs <N>` (duration script): bounded ffprobe worker count (defaults to `3`; use `1` to force sequential probing).
 
 ## Script sets
 
@@ -178,8 +180,12 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 - Recursively scans files under the target directory.
 - Excludes `.archival-prep` from scanning to avoid probing generated report files.
 - Uses `ffprobe` to read duration.
+- Supports bounded concurrent probing via `--jobs` / `-Jobs` (default: `3` workers).
+- Falls back to deterministic sequential probing when jobs is set to `1`.
+- Keeps final outputs deterministic by sorting records before writing reports.
 - Normalizes duration to nearest second.
 - Skips files with unreadable/non-timed durations (including empty probe output and `N/A`, which ffprobe can return for streams without duration metadata).
+- Uses a conservative default worker count for safer probing on slower/external drives; tune jobs upward only when appropriate for your storage.
 - Overwrites outputs each run.
 
 **Output formats**
