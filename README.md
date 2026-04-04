@@ -30,6 +30,9 @@ You can optionally override both the scan target and output location:
 
 - Unix: `--target-dir <DIR>` and `--output-dir <DIR>` (or `--log-dir <DIR>` alias).
 - PowerShell: `-TargetDir <DIR>` and `-OutputDir <DIR>`.
+- Duration scripts also support worker limits:
+  - Unix: `--jobs <N>` (default: `3`)
+  - PowerShell: `-Jobs <int>` (default: `3`)
 
 ## Quick start
 
@@ -44,7 +47,7 @@ Run from the directory you want to analyze:
 /path/to/repo/scripts/unix/report-file-durations.sh
 
 # Optional override example:
-/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports
+/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports --jobs 6
 ```
 
 ### Windows PowerShell
@@ -56,7 +59,7 @@ Run from the directory you want to analyze:
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
 
 # Optional override example:
-& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep"
+& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep" -Jobs 6
 ```
 
 ## CLI options
@@ -66,12 +69,14 @@ Run from the directory you want to analyze:
 - `--target-dir <DIR>`: directory to scan (defaults to current working directory).
 - `--output-dir <DIR>`: report output location (defaults to `<target>/.archival-prep`).
 - `--log-dir <DIR>`: alias of `--output-dir`.
+- `--jobs <N>` (duration script): max concurrent `ffprobe` workers (defaults to `3`, must be `>= 1`).
 - `--help`: print script usage.
 
 ### PowerShell scripts
 
 - `-TargetDir <DIR>`: directory to scan (defaults to current location).
 - `-OutputDir <DIR>`: report output location (defaults to `<target>\.archival-prep`).
+- `-Jobs <int>` (duration script): max concurrent `ffprobe` workers (defaults to `3`, must be `>= 1`).
 
 ## Script sets
 
@@ -178,12 +183,14 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 - Recursively scans files under the target directory.
 - Excludes `.archival-prep` from scanning to avoid probing generated report files.
 - Probes each file once with `ffprobe` to read duration.
+- Uses bounded parallel workers for `ffprobe` calls (`--jobs` / `-Jobs`, default `3`).
 - Classifies each file as either:
   - numeric duration (normalized to nearest second), or
   - no readable duration (`ffprobe` failure, empty output, `N/A`, or non-numeric duration output).
 - Writes numeric-duration rows in the main section of `file-durations.txt`.
 - Appends a `=== FILES WITH NO READABLE DURATION ===` section listing files without readable durations.
 - Keeps duplicate grouping numeric-only (only normalized numeric durations are considered).
+- Sorts final records before writing reports to preserve deterministic output.
 - Overwrites outputs each run.
 
 **Output formats**
