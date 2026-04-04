@@ -5,6 +5,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 
 $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
 if (-not $ffprobe) {
@@ -17,7 +18,7 @@ Example (winget): winget install Gyan.FFmpeg
 }
 
 $startDir = (Resolve-Path -LiteralPath $TargetDir).Path
-if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+if (-not $outputDirProvided) {
     $OutputDir = Join-Path $startDir '.archival-prep'
 }
 if (-not (Test-Path -LiteralPath $OutputDir)) {
