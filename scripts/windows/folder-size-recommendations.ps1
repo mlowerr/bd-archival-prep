@@ -100,14 +100,31 @@ function Get-TryPack {
         }
     }
 
-    $runBestFitFallback = {
+    function Invoke-BestFitFallbackPack {
+        param(
+            [long[]]$ItemSizes,
+            [array]$InitialBins
+        )
+
         $script:packFallbackUsed = $true
-        foreach ($itemIndex in 0..($sizes.Count - 1)) {
-            $needed = [long]$sizes[$itemIndex]
+        $workingBins = @()
+        foreach ($bin in $InitialBins) {
+            $workingBins += [PSCustomObject]@{
+                CapacityBytes = [long]$bin.CapacityBytes
+                UsedBytes = [long]$bin.UsedBytes
+                Picks = [System.Collections.Generic.List[int]]::new()
+            }
+            foreach ($existingPick in $bin.Picks) {
+                $null = $workingBins[-1].Picks.Add([int]$existingPick)
+            }
+        }
+
+        foreach ($itemIndex in 0..($ItemSizes.Count - 1)) {
+            $needed = [long]$ItemSizes[$itemIndex]
             $bestBin = $null
             $bestFreeAfter = $null
-            for ($i = 0; $i -lt $bins.Count; $i++) {
-                $free = [long]$bins[$i].CapacityBytes - [long]$bins[$i].UsedBytes
+            for ($i = 0; $i -lt $workingBins.Count; $i++) {
+                $free = [long]$workingBins[$i].CapacityBytes - [long]$workingBins[$i].UsedBytes
                 if ($free -lt $needed) { continue }
                 $freeAfter = $free - $needed
                 if ($null -eq $bestBin -or $freeAfter -lt $bestFreeAfter -or ($freeAfter -eq $bestFreeAfter -and $i -lt $bestBin)) {
@@ -120,13 +137,25 @@ function Get-TryPack {
                 return $null
             }
 
-            $bins[$bestBin].UsedBytes += $needed
-            $null = $bins[$bestBin].Picks.Add($itemIndex)
+            $workingBins[$bestBin].UsedBytes += $needed
+            $null = $workingBins[$bestBin].Picks.Add($itemIndex)
         }
+
+        return @($workingBins | ForEach-Object {
+            [PSCustomObject]@{
+                CapacityBytes = [long]$_.CapacityBytes
+                UsedBytes = [long]$_.UsedBytes
+                Picks = @($_.Picks)
+            }
+        })
     }
 
     if ($sizes.Count -gt $mediumWorkloadMaxItems) {
-        & $runBestFitFallback
+        $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+        if ($null -eq $fallbackBins) {
+            return $null
+        }
+        $bins = $fallbackBins
     }
     else {
         $failed = [System.Collections.Generic.HashSet[string]]::new()
@@ -149,7 +178,11 @@ function Get-TryPack {
                         Picks = [System.Collections.Generic.List[int]]::new()
                     }
                 }
-                & $runBestFitFallback
+                $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+                if ($null -eq $fallbackBins) {
+                    return $null
+                }
+                $solutionBins = $fallbackBins
                 break
             }
 
@@ -222,6 +255,11 @@ function Get-TryPack {
         }
 
         $bins = $solutionBins
+    }
+
+    $totalPicks = [int](($bins | ForEach-Object { $_.Picks.Count } | Measure-Object -Sum).Sum)
+    if ($totalPicks -ne $Entries.Count) {
+        throw "Internal pack sanity check failed: picks count $totalPicks does not match entries count $($Entries.Count)."
     }
 
     return @($bins | ForEach-Object {
