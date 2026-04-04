@@ -4,6 +4,7 @@ param(
     [string]$OutputDir
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 
@@ -22,7 +23,7 @@ if (-not $outputDirProvided) {
     $OutputDir = Join-Path $startDir '.archival-prep'
 }
 if (-not (Test-Path -LiteralPath $OutputDir)) {
-    New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
+    New-Item -LiteralPath $OutputDir -ItemType Directory -Force | Out-Null
 }
 $outDir = (Resolve-Path -LiteralPath $OutputDir).Path
 
@@ -110,7 +111,7 @@ function Test-IsVideoFile {
     return ($stdoutTask.Result.Trim() -eq 'video')
 }
 
-Get-ChildItem -Path $startDir -File -Recurse |
+Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     Sort-Object FullName |
     Where-Object {
         $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
@@ -160,7 +161,7 @@ $durationLines.Add('')
 $records |
     Sort-Object FullPath |
     ForEach-Object { $durationLines.Add(("{0} | {1}" -f $_.FullPath, $_.Duration)) }
-Set-Content -Path $fileDurationsPath -Value $durationLines -Encoding UTF8
+Set-Content -LiteralPath $fileDurationsPath -Value $durationLines -Encoding UTF8
 
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.AppendLine("# Script: $scriptName")
@@ -183,7 +184,7 @@ $records |
         [void]$sb.AppendLine('')
     }
 
-$sb.ToString().TrimEnd() | Set-Content -Path $duplicatesPath -Encoding UTF8
+$sb.ToString().TrimEnd() | Set-Content -LiteralPath $duplicatesPath -Encoding UTF8
 
-Write-Host "Wrote: $fileDurationsPath"
-Write-Host "Wrote: $duplicatesPath"
+Write-Output "Wrote: $fileDurationsPath"
+Write-Output "Wrote: $duplicatesPath"
