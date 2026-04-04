@@ -51,7 +51,7 @@ FOLDER_SIZES_FILE="${OUTPUT_DIR}/folder-sizes.txt"
 RECOMMENDATIONS_FILE="${OUTPUT_DIR}/blu-ray-recommendations.txt"
 CANDIDATES_FILE="${OUTPUT_DIR}/folder-sizes.tsv"
 CANDIDATES_DATA_FILE="$(mktemp)"
-trap 'rm -f "${CANDIDATES_DATA_FILE}"' EXIT
+trap 'rm -f "${CANDIDATES_DATA_FILE}" "${FOLDER_SIZES_FILE}.body"' EXIT
 
 SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -59,10 +59,9 @@ REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 while IFS= read -r -d '' dir; do
   size_kb="$(du -sk "$dir" | cut -f1)"
   size_gb="$(awk -v kb="$size_kb" 'BEGIN { printf "%.3f", kb/1048576 }')"
-  abs_path="$(cd "$dir" && pwd)"
 
-  printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
-  printf '%s | %s GiB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}.body"
+  printf '%s\t%s\n' "$dir" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
+  printf '%s | %s GiB\n' "$dir" "$size_gb" >> "${FOLDER_SIZES_FILE}.body"
 done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name '.archival-prep' -print0)
 
 sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"

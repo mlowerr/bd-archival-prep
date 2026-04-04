@@ -70,7 +70,7 @@ while IFS= read -r -d '' file_path; do
 
   grouped_paths["${base_name}"]+="${file_path}"$'\n'
   grouped_counts["${base_name}"]=$(( ${grouped_counts["${base_name}"]:-0} + 1 ))
-done < <(find "${start_dir}" -type f -print0)
+done < <(find "${start_dir}" \( -path "${out_dir}" -o -path "${out_dir}/*" \) -prune -o -type f -print0)
 
 {
   printf '# Script: %s\n' "${script_name}"
