@@ -62,7 +62,7 @@ while IFS= read -r -d '' dir; do
   abs_path="$(cd "$dir" && pwd)"
 
   printf '%s\t%s\n' "$abs_path" "$size_kb" >> "${CANDIDATES_DATA_FILE}"
-  printf '%s | %s GB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}.body"
+  printf '%s | %s GiB\n' "$abs_path" "$size_gb" >> "${FOLDER_SIZES_FILE}.body"
 done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name '.archival-prep' -print0)
 
 sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
@@ -70,8 +70,8 @@ sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
 {
   printf '# Script: %s\n' "${SCRIPT_NAME}"
   printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
-  printf '# Reporting on: %s\n' "${INVOCATION_DIR}"
-  printf '# Subject: first-level folder sizes in GB\n\n'
+  printf '# Target directory: %s\n' "${INVOCATION_DIR}"
+  printf '# Subject: first-level folder sizes in GiB (binary units)\n\n'
   if [[ -f "${FOLDER_SIZES_FILE}.body" ]]; then
     cat "${FOLDER_SIZES_FILE}.body"
   fi
@@ -80,7 +80,7 @@ sort -t $'\t' -k2,2nr -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
 {
   printf '# Script: %s\n' "${SCRIPT_NAME}"
   printf '# Report date (UTC): %s\n' "${REPORT_DATE_UTC}"
-  printf '# Reporting on: %s\n' "${INVOCATION_DIR}"
+  printf '# Target directory: %s\n' "${INVOCATION_DIR}"
   printf '# Subject: first-level folder size candidates in KB (TSV: path<TAB>size_kb)\n\n'
   cat "${CANDIDATES_DATA_FILE}"
 } > "${CANDIDATES_FILE}"
@@ -231,19 +231,19 @@ def write_plan(out, header, plan):
 
     total_disks = plan["n100"] + plan["n50"]
     unused = plan["capacity"] - total_data
-    out.write(f"Combination: {plan['n100']} x 93.1 GB + {plan['n50']} x 46.4 GB\n")
+    out.write(f"Combination: {plan['n100']} x 100 GB marketed (93.1 GiB) + {plan['n50']} x 50 GB marketed (46.4 GiB)\n")
     out.write(f"Total disks: {total_disks}\n")
-    out.write(f"Disk counts by size: 100GB={plan['n100']}, 50GB={plan['n50']}\n")
-    out.write(f"Total data size: {kb_to_gb(total_data):.3f} GB\n")
-    out.write(f"Total writable capacity: {kb_to_gb(plan['capacity']):.3f} GB\n")
-    out.write(f"Total unused space: {kb_to_gb(unused):.3f} GB\n\n")
+    out.write(f"Disk counts by size (marketed): 100GB={plan['n100']}, 50GB={plan['n50']}\n")
+    out.write(f"Total data size: {kb_to_gb(total_data):.3f} GiB\n")
+    out.write(f"Total writable capacity: {kb_to_gb(plan['capacity']):.3f} GiB\n")
+    out.write(f"Total unused space: {kb_to_gb(unused):.3f} GiB\n\n")
 
     for i, b in enumerate(plan["bins"], start=1):
         used_gb = kb_to_gb(b["used"])
         cap_gb = kb_to_gb(b["cap"])
         unused_gb = cap_gb - used_gb
         out.write(
-            f"Disk [{i} of {total_disks}] [{cap_gb:.1f} GB] | Size used: {used_gb:.3f} GB | Unused space: {unused_gb:.3f} GB\n"
+            f"Disk [{i} of {total_disks}] [{cap_gb:.1f} GiB] | Size used: {used_gb:.3f} GiB | Unused space: {unused_gb:.3f} GiB\n"
         )
         for pick in b["items"]:
             out.write(f"{items[pick][0]}\n")
@@ -252,11 +252,11 @@ def write_plan(out, header, plan):
 with open(recommendations_file, "w", encoding="utf-8") as out:
     out.write(f"# Script: {script_name}\n")
     out.write(f"# Report date (UTC): {report_date_utc}\n")
-    out.write(f"# Reporting on: {report_target}\n")
-    out.write("# Subject: optimal Blu-ray folder packing recommendations\n\n")
-    write_plan(out, "OPTIMAL MIXED DISK PLAN (50GB + 100GB)", find_optimal_mixed_plan())
-    write_plan(out, "OPTIMAL 50GB-ONLY DISK PLAN", find_optimal_50_only_plan())
-    write_plan(out, "OPTIMAL 100GB-ONLY DISK PLAN", find_optimal_100_only_plan())
+    out.write(f"# Target directory: {report_target}\n")
+    out.write("# Subject: optimal Blu-ray folder packing recommendations (marketed GB labels with binary GiB capacities)\n\n")
+    write_plan(out, "OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)", find_optimal_mixed_plan())
+    write_plan(out, "OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)", find_optimal_50_only_plan())
+    write_plan(out, "OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)", find_optimal_100_only_plan())
 PY
 
 rm -f "${FOLDER_SIZES_FILE}.body"
