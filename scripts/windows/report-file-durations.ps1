@@ -37,14 +37,26 @@ $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $records = New-Object System.Collections.Generic.List[object]
 $unreadableFiles = New-Object System.Collections.Generic.List[string]
-$outDirNormalized = ([System.IO.Path]::GetFullPath($outDir)).TrimEnd('\\', '/')
-$outDirPrefix = "$outDirNormalized\"
+
+function Test-IsPathUnder {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ParentPath,
+        [Parameter(Mandatory = $true)]
+        [string]$ChildPath
+    )
+
+    $parentFullPath = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($ParentPath))
+    $childFullPath = [System.IO.Path]::GetFullPath($ChildPath)
+    $parentPrefix = Join-Path -Path $parentFullPath -ChildPath ''
+
+    return $childFullPath.StartsWith($parentPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
 
 $candidateFiles = Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     Sort-Object FullName |
     Where-Object {
-        $filePathNormalized = ([System.IO.Path]::GetFullPath($_.FullName)).Replace('/', '\\')
-        -not $filePathNormalized.StartsWith($outDirPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        -not (Test-IsPathUnder -ParentPath $outDir -ChildPath $_.FullName)
     } |
     Select-Object -ExpandProperty FullName
 
