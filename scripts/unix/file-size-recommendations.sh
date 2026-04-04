@@ -57,7 +57,7 @@ SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 find_args=("${INVOCATION_DIR}" -type f)
-if [[ "${OUTPUT_DIR}" == "${INVOCATION_DIR}" || "${OUTPUT_DIR}" == "${INVOCATION_DIR}"/* ]]; then
+if [[ "${OUTPUT_DIR}" == "${INVOCATION_DIR}"/* ]]; then
   find_args=("${INVOCATION_DIR}" -path "${OUTPUT_DIR}" -prune -o -type f -print0)
 else
   find_args=("${INVOCATION_DIR}" -type f -print0)
