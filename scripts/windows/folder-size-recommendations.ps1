@@ -24,10 +24,19 @@ $scriptName = Split-Path -Leaf $PSCommandPath
 $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $items = @()
-$directories = Get-ChildItem -LiteralPath $invocationDir -Directory | Where-Object { $_.Name -ne '.archival-prep' }
+$directories = Get-ChildItem -LiteralPath $invocationDir -Directory | Where-Object {
+    (Resolve-Path -LiteralPath $_.FullName).Path -ne $outputDir
+}
 
 foreach ($dir in $directories) {
-    $sum = (Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -File | Measure-Object -Property Length -Sum).Sum
+    $dirPathWithSep = $dir.FullName.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+    $files = Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -File
+    if ($outputDir.StartsWith($dirPathWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $files = $files | Where-Object {
+            -not ($_.FullName -eq $outputDir -or $_.FullName.StartsWith($outputDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase))
+        }
+    }
+    $sum = ($files | Measure-Object -Property Length -Sum).Sum
     if (-not $sum) { $sum = 0 }
 
     $items += [PSCustomObject]@{

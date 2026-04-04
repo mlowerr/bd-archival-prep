@@ -57,11 +57,20 @@ SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 while IFS= read -r -d '' dir; do
-  size_bytes="$(du -sb "$dir" | cut -f1)"
+  resolved_dir="$(cd -- "$dir" && pwd)"
+  if [[ "$resolved_dir" == "$OUTPUT_DIR" ]]; then
+    continue
+  fi
+
+  if [[ "$OUTPUT_DIR" == "$resolved_dir"/* ]]; then
+    size_bytes="$(find "$dir" -path "$OUTPUT_DIR" -prune -o -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')"
+  else
+    size_bytes="$(du -sb "$dir" | cut -f1)"
+  fi
 
   printf '%s	%s
 ' "$dir" "$size_bytes" >> "${CANDIDATES_DATA_FILE}"
-done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d ! -name '.archival-prep' -print0)
+done < <(find "${INVOCATION_DIR}" -mindepth 1 -maxdepth 1 -type d -print0)
 
 sort -t $'	' -k2,2nr -k1,1 -o "${CANDIDATES_DATA_FILE}" "${CANDIDATES_DATA_FILE}"
 
