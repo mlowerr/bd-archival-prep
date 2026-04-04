@@ -44,7 +44,7 @@ Run from the directory you want to analyze:
 /path/to/repo/scripts/unix/report-file-durations.sh
 
 # Optional override example:
-/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports --jobs 6
+/path/to/repo/scripts/unix/report-file-durations.sh --target-dir /data/media --output-dir /tmp/archival-reports
 ```
 
 ### Windows PowerShell
@@ -56,7 +56,7 @@ Run from the directory you want to analyze:
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
 
 # Optional override example:
-& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep" -Jobs 6
+& "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep"
 ```
 
 ## CLI options
