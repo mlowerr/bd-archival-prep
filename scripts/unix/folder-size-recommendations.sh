@@ -112,6 +112,10 @@ report_date_utc = sys.argv[4]
 report_target = sys.argv[5]
 CAP_50_BYTES = int(round(46.4 * 1024**3))
 CAP_100_BYTES = int(round(93.1 * 1024**3))
+MEDIUM_WORKLOAD_MIN_ITEMS = 50
+MEDIUM_WORKLOAD_MAX_ITEMS = 500
+MEDIUM_DFS_STATE_BUDGET = 250000
+RECURSION_PADDING = 100
 
 items = []
 with open(candidates_file, newline="", encoding="utf-8") as f:
@@ -131,13 +135,52 @@ sizes_bytes = [size for _, size in items]
 suffix = [0] * (len(sizes_bytes) + 1)
 for i in range(len(sizes_bytes) - 1, -1, -1):
     suffix[i] = suffix[i + 1] + sizes_bytes[i]
+pack_fallback_used = False
 
 
 def try_pack(capacities):
+    global pack_fallback_used
     bins = [{"cap": c, "used": 0, "items": []} for c in capacities]
     failed = set()
 
+    def greedy_pack():
+        for idx, needed in enumerate(sizes_bytes):
+            best_bin = None
+            best_free_after = None
+            for bin_idx, b in enumerate(bins):
+                free = b["cap"] - b["used"]
+                if free < needed:
+                    continue
+                free_after = free - needed
+                if best_bin is None or free_after < best_free_after or (
+                    free_after == best_free_after and bin_idx < best_bin
+                ):
+                    best_bin = bin_idx
+                    best_free_after = free_after
+
+            if best_bin is None:
+                return None
+
+            bins[best_bin]["used"] += needed
+            bins[best_bin]["items"].append(idx)
+        return bins
+
+    if len(items) > MEDIUM_WORKLOAD_MAX_ITEMS:
+        pack_fallback_used = True
+        return greedy_pack()
+
+    recursion_limit = max(sys.getrecursionlimit(), len(items) + RECURSION_PADDING)
+    sys.setrecursionlimit(recursion_limit)
+    search_budget = MEDIUM_DFS_STATE_BUDGET if MEDIUM_WORKLOAD_MIN_ITEMS <= len(items) <= MEDIUM_WORKLOAD_MAX_ITEMS else None
+    states_visited = 0
+    budget_exhausted = False
+
     def dfs(idx):
+        nonlocal states_visited, budget_exhausted
+        states_visited += 1
+        if search_budget is not None and states_visited > search_budget:
+            budget_exhausted = True
+            return False
         if idx == len(items):
             return True
 
@@ -168,6 +211,9 @@ def try_pack(capacities):
 
     if dfs(0):
         return bins
+    if budget_exhausted:
+        pack_fallback_used = True
+        return greedy_pack()
     return None
 
 
@@ -252,6 +298,10 @@ def write_plan(out, header, plan):
     out.write(f"Total data size: {bytes_to_gib(total_data):.3f} GiB\n")
     out.write(f"Total writable capacity: {bytes_to_gib(plan['capacity']):.3f} GiB\n")
     out.write(f"Total unused space: {bytes_to_gib(unused):.3f} GiB\n\n")
+    if pack_fallback_used:
+        out.write(
+            f"Packing strategy: best-fit fallback used (exact DFS target range: {MEDIUM_WORKLOAD_MIN_ITEMS}-{MEDIUM_WORKLOAD_MAX_ITEMS} items, budget {MEDIUM_DFS_STATE_BUDGET} explored states).\n\n"
+        )
 
     for i, b in enumerate(plan["bins"], start=1):
         used_gb = bytes_to_gib(b["used"])
