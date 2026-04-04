@@ -25,7 +25,7 @@ $reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $items = @()
 $allFiles = Get-ChildItem -LiteralPath $invocationDir -Recurse -File -Force
-if ($outputDir -eq $invocationDir -or $outputDir.StartsWith($invocationDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+if ($outputDir.StartsWith($invocationDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
     $allFiles = $allFiles | Where-Object {
         -not ($_.FullName -eq $outputDir -or $_.FullName.StartsWith($outputDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase))
     }
