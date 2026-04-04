@@ -8,7 +8,8 @@ if ! command -v ffprobe >/dev/null 2>&1; then
 fi
 
 start_dir="${PWD}"
-out_dir="$start_dir/.archival-prep"
+out_dir=""
+out_dir_set=false
 
 usage() {
   cat <<'USAGE'
@@ -30,6 +31,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-dir|--log-dir)
       out_dir="$2"
+      out_dir_set=true
       shift 2
       ;;
     -h|--help)
@@ -45,6 +47,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 start_dir="$(cd -- "$start_dir" && pwd)"
+if [[ "${out_dir_set}" == false ]]; then
+  out_dir="${start_dir}/.archival-prep"
+fi
 mkdir -p "$out_dir"
 out_dir="$(cd -- "$out_dir" && pwd)"
 

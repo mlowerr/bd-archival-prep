@@ -6,12 +6,12 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-    $OutputDir = Join-Path -Path $TargetDir -ChildPath '.archival-prep'
-}
+$outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 
 $startDir = (Resolve-Path -LiteralPath $TargetDir).ProviderPath
+if (-not $outputDirProvided) {
+    $OutputDir = Join-Path -Path $startDir -ChildPath '.archival-prep'
+}
 if (-not (Test-Path -LiteralPath $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
 }

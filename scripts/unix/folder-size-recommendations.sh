@@ -2,7 +2,8 @@
 set -euo pipefail
 
 INVOCATION_DIR="$(pwd)"
-OUTPUT_DIR="${INVOCATION_DIR}/.archival-prep"
+OUTPUT_DIR=""
+OUTPUT_DIR_SET=false
 
 usage() {
   cat <<'USAGE'
@@ -24,6 +25,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-dir|--log-dir)
       OUTPUT_DIR="$2"
+      OUTPUT_DIR_SET=true
       shift 2
       ;;
     -h|--help)
@@ -39,6 +41,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 INVOCATION_DIR="$(cd -- "$INVOCATION_DIR" && pwd)"
+if [[ "${OUTPUT_DIR_SET}" == false ]]; then
+  OUTPUT_DIR="${INVOCATION_DIR}/.archival-prep"
+fi
 mkdir -p "${OUTPUT_DIR}"
 OUTPUT_DIR="$(cd -- "$OUTPUT_DIR" && pwd)"
 

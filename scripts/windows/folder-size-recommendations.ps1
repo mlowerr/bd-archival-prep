@@ -5,9 +5,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 
 $invocationDir = (Resolve-Path -LiteralPath $TargetDir).Path
-if ([string]::IsNullOrWhiteSpace($OutputDir)) {
+if (-not $outputDirProvided) {
     $OutputDir = Join-Path $invocationDir '.archival-prep'
 }
 if (-not (Test-Path -LiteralPath $OutputDir)) {
