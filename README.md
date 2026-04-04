@@ -6,8 +6,8 @@ Cross-platform scripts for preparing large directories for optical archival work
 
 | Need | Script (Unix) | Script (Windows PowerShell) | Main output(s) |
 |---|---|---|---|
-| Pack top-level folders onto 50GB/100GB Blu-ray media | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
-| Pack individual files onto 50GB/100GB Blu-ray media | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
+| Pack top-level folders onto 50 GB / 100 GB marketed Blu-ray media (46.4 GiB / 93.1 GiB usable) | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
+| Pack individual files onto 50 GB / 100 GB marketed Blu-ray media (46.4 GiB / 93.1 GiB usable) | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
 | Find filename-stem collisions (`name.ext1` vs `name.ext2`) | `scripts/unix/report-basename-collisions.sh` | `scripts/windows/report-basename-collisions.ps1` | `basename-collisions.txt` |
 | Report durations + flag potential duplicates by equal duration | `scripts/unix/report-file-durations.sh` | `scripts/windows/report-file-durations.ps1` | `file-durations.txt`, `possible-duplicates-by-duration.txt` |
 
@@ -87,28 +87,28 @@ Run from the directory you want to analyze:
 - `.archival-prep/folder-sizes.tsv` (Unix script intermediate candidate data)
 
 **Behavior**
-- Scans only first-level directories under the invocation directory.
+- Scans only first-level directories under the target directory.
 - Excludes `.archival-prep` from candidates.
 - Builds complete packing plans (all candidate directories assigned) for:
-  - **Mixed disk sizes** (both `46.4 GB` and `93.1 GB` usable capacities allowed).
-  - **50 GB only** (`46.4 GB` usable capacity only).
-  - **100 GB only** (`93.1 GB` usable capacity only).
+  - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
+  - **50 GB only** (`46.4 GiB` usable capacity only).
+  - **100 GB only** (`93.1 GiB` usable capacity only).
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
 **Recommendation report format**
 
 ```text
-=== OPTIMAL MIXED DISK PLAN (50GB + 100GB) ===
-Combination: [#] x 93.1 GB + [#] x 46.4 GB
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: [#] x 100 GB marketed (93.1 GiB) + [#] x 50 GB marketed (46.4 GiB)
 Total disks: [count]
-Disk counts by size: 100GB=[#], 50GB=[#]
+Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 ...
 
-=== OPTIMAL 50GB-ONLY DISK PLAN ===
+=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ===
 ...
 
-=== OPTIMAL 100GB-ONLY DISK PLAN ===
+=== OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
 ...
 ```
 
@@ -124,12 +124,12 @@ Disk counts by size: 100GB=[#], 50GB=[#]
 - `.archival-prep/file-sizes.tsv` (candidate file data)
 
 **Behavior**
-- Recursively scans files under the invocation directory.
+- Recursively scans files under the target directory.
 - Excludes `.archival-prep` from candidates when output is inside the target directory.
 - Builds complete packing plans (all candidate files assigned) for:
-  - **Mixed disk sizes** (both `46.4 GB` and `93.1 GB` usable capacities allowed).
-  - **50 GB only** (`46.4 GB` usable capacity only).
-  - **100 GB only** (`93.1 GB` usable capacity only).
+  - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
+  - **50 GB only** (`46.4 GiB` usable capacity only).
+  - **100 GB only** (`93.1 GiB` usable capacity only).
 - Optimizes for minimum total disk count first, then minimum total unused space.
 - Overwrites outputs each run.
 
@@ -143,7 +143,7 @@ Disk counts by size: 100GB=[#], 50GB=[#]
 - `.archival-prep/basename-collisions.txt`
 
 **Behavior**
-- Recursively scans files under the invocation directory.
+- Recursively scans files under the target directory.
 - Groups by basename (`filename` without the final extension).
   - Example: `video.sample.mp4` and `video.sample.mkv` both map to `video.sample`.
 - Emits only groups with 2+ files.
@@ -171,11 +171,11 @@ Disk counts by size: 100GB=[#], 50GB=[#]
 - `.archival-prep/possible-duplicates-by-duration.txt`
 
 **Behavior**
-- Recursively scans files under the invocation directory.
+- Recursively scans files under the target directory.
 - Excludes `.archival-prep` from scanning to avoid probing generated report files.
 - Uses `ffprobe` to read duration.
 - Normalizes duration to nearest second.
-- Skips files with unreadable/non-timed durations (including empty probe output and `N/A`).
+- Skips files with unreadable/non-timed durations (including empty probe output and `N/A`, which ffprobe can return for streams without duration metadata).
 - Overwrites outputs each run.
 
 **Output formats**
@@ -225,5 +225,5 @@ Verify:
 ## Troubleshooting
 
 - **`ffprobe` not found**: install FFmpeg and verify with `ffprobe -version`.
-- **No duration entries**: confirm files are media files with readable duration metadata.
+- **No duration entries**: this is expected when files are not video streams or when `ffprobe` reports missing duration metadata (including `N/A`). Confirm the input files are expected video media with readable duration metadata.
 - **Permission errors writing reports**: set an explicit writable output path (`--output-dir` / `-OutputDir`).
