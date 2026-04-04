@@ -70,6 +70,8 @@ $mediumWorkloadMinItems = 50
 $mediumWorkloadMaxItems = 500
 $mediumDfsStateBudget = 250000
 $script:packFallbackUsed = $false
+$oversizedItems = @($items | Where-Object { [long]$_.SizeBytes -gt $capacity100Bytes })
+$packableItems = @($items | Where-Object { [long]$_.SizeBytes -le $capacity100Bytes })
 
 function Get-TryPack {
     param(
@@ -229,11 +231,9 @@ function Get-OptimalMixedPlan {
     param([array]$Entries)
 
     if ($Entries.Count -eq 0) {
+        if ($oversizedItems.Count -gt 0) { return $null }
         return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
     }
-
-    $maxItem = ($Entries | Measure-Object -Property SizeBytes -Maximum).Maximum
-    if ([long]$maxItem -gt $capacity100Bytes) { return $null }
 
     $totalBytes = [long](($Entries | Measure-Object -Property SizeBytes -Sum).Sum)
     $minDisks = [Math]::Max(1, [int][Math]::Ceiling($totalBytes / [double]$capacity100Bytes))
@@ -277,6 +277,7 @@ function Get-Optimal50OnlyPlan {
     param([array]$Entries)
 
     if ($Entries.Count -eq 0) {
+        if ($oversizedItems.Count -gt 0) { return $null }
         return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
     }
 
@@ -305,6 +306,7 @@ function Get-Optimal100OnlyPlan {
     param([array]$Entries)
 
     if ($Entries.Count -eq 0) {
+        if ($oversizedItems.Count -gt 0) { return $null }
         return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
     }
 
@@ -334,12 +336,24 @@ function Write-PlanSection {
         [string]$Header,
         [object]$Plan,
         [array]$Entries,
+        [int]$AllEntriesCount,
+        [int]$OversizedCount,
         [System.Collections.Generic.List[string]]$Lines
     )
 
     $Lines.Add(("=== {0} ===" -f $Header))
 
     if (-not $Plan) {
+        if ($Entries.Count -eq 0 -and $OversizedCount -gt 0 -and $AllEntriesCount -eq $OversizedCount) {
+            $Lines.Add('All items are oversized (> 93.1 GiB); no packable items remain.')
+            $Lines.Add('')
+            return
+        }
+        if ($OversizedCount -gt 0) {
+            $Lines.Add('No feasible plan found for packable items.')
+            $Lines.Add('')
+            return
+        }
         $Lines.Add('No feasible plan found.')
         $Lines.Add('')
         return
@@ -377,9 +391,9 @@ function Write-PlanSection {
     }
 }
 
-$mixedPlan = Get-OptimalMixedPlan -Entries $items
-$only50Plan = Get-Optimal50OnlyPlan -Entries $items
-$only100Plan = Get-Optimal100OnlyPlan -Entries $items
+$mixedPlan = Get-OptimalMixedPlan -Entries $packableItems
+$only50Plan = Get-Optimal50OnlyPlan -Entries $packableItems
+$only100Plan = Get-Optimal100OnlyPlan -Entries $packableItems
 
 $recommendationLines = New-Object System.Collections.Generic.List[string]
 $recommendationLines.Add("# Script: $scriptName")
@@ -387,10 +401,20 @@ $recommendationLines.Add("# Report date (UTC): $reportDateUtc")
 $recommendationLines.Add("# Target directory: $invocationDir")
 $recommendationLines.Add('# Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)')
 $recommendationLines.Add('')
+$recommendationLines.Add('=== OVERSIZED ===')
+if ($oversizedItems.Count -gt 0) {
+    foreach ($item in $oversizedItems) {
+        $recommendationLines.Add(("{0} | {1:N3} GiB" -f $item.Path, ([double]$item.SizeBytes / 1GB)))
+    }
+}
+else {
+    $recommendationLines.Add('None.')
+}
+$recommendationLines.Add('')
 
-Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Entries $items -Lines $recommendationLines
-Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)' -Plan $only50Plan -Entries $items -Lines $recommendationLines
-Write-PlanSection -Header 'OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)' -Plan $only100Plan -Entries $items -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Entries $packableItems -AllEntriesCount $items.Count -OversizedCount $oversizedItems.Count -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)' -Plan $only50Plan -Entries $packableItems -AllEntriesCount $items.Count -OversizedCount $oversizedItems.Count -Lines $recommendationLines
+Write-PlanSection -Header 'OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)' -Plan $only100Plan -Entries $packableItems -AllEntriesCount $items.Count -OversizedCount $oversizedItems.Count -Lines $recommendationLines
 
 Set-Content -Path $recommendationsFile -Value $recommendationLines -Encoding UTF8
 
