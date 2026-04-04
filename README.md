@@ -2,13 +2,25 @@
 
 Cross-platform scripts for preparing large directories for optical archival workflows.
 
+## At a glance
+
+| Need | Script (Unix) | Script (Windows PowerShell) | Main output(s) |
+|---|---|---|---|
+| Pack top-level folders onto 50GB/100GB Blu-ray media | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
+| Pack individual files onto 50GB/100GB Blu-ray media | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
+| Find filename-stem collisions (`name.ext1` vs `name.ext2`) | `scripts/unix/report-basename-collisions.sh` | `scripts/windows/report-basename-collisions.ps1` | `basename-collisions.txt` |
+| Report durations + flag potential duplicates by equal duration | `scripts/unix/report-file-durations.sh` | `scripts/windows/report-file-durations.ps1` | `file-durations.txt`, `possible-duplicates-by-duration.txt` |
+
+All outputs are written to `.archival-prep/` by default.
+
 ## What this repo contains
 
-This repo provides three script sets, each with Unix and Windows PowerShell versions:
+This repo provides four script sets, each with Unix and Windows PowerShell versions:
 
-1. **Blu-ray packing recommendations** (first-level folder packing).
-2. **Basename collision report** (same filename stem across files).
-3. **File duration reports** (all probed durations + possible duplicates by duration).
+1. **Blu-ray folder packing recommendations** (first-level folder packing).
+2. **Blu-ray file packing recommendations** (recursive per-file packing).
+3. **Basename collision report** (same filename stem across files).
+4. **File duration reports** (all probed durations + possible duplicates by duration).
 
 By default, all scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
@@ -27,6 +39,7 @@ Run from the directory you want to analyze:
 
 ```bash
 /path/to/repo/scripts/unix/folder-size-recommendations.sh
+/path/to/repo/scripts/unix/file-size-recommendations.sh
 /path/to/repo/scripts/unix/report-basename-collisions.sh
 /path/to/repo/scripts/unix/report-file-durations.sh
 
@@ -38,12 +51,27 @@ Run from the directory you want to analyze:
 
 ```powershell
 & "C:\path\to\repo\scripts\windows\folder-size-recommendations.ps1"
+& "C:\path\to\repo\scripts\windows\file-size-recommendations.ps1"
 & "C:\path\to\repo\scripts\windows\report-basename-collisions.ps1"
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1"
 
 # Optional override example:
 & "C:\path\to\repo\scripts\windows\report-file-durations.ps1" -TargetDir "D:\Media" -OutputDir "D:\Reports\archival-prep"
 ```
+
+## CLI options
+
+### Unix scripts
+
+- `--target-dir <DIR>`: directory to scan (defaults to current working directory).
+- `--output-dir <DIR>`: report output location (defaults to `<target>/.archival-prep`).
+- `--log-dir <DIR>`: alias of `--output-dir`.
+- `--help`: print script usage.
+
+### PowerShell scripts
+
+- `-TargetDir <DIR>`: directory to scan (defaults to current location).
+- `-OutputDir <DIR>`: report output location (defaults to `<target>\.archival-prep`).
 
 ## Script sets
 
@@ -84,7 +112,28 @@ Disk counts by size: 100GB=[#], 50GB=[#]
 ...
 ```
 
-### 2) Basename collision report
+### 2) Blu-ray file packing recommendations
+
+**Scripts**
+- `scripts/unix/file-size-recommendations.sh`
+- `scripts/windows/file-size-recommendations.ps1`
+
+**Outputs**
+- `.archival-prep/file-sizes.txt`
+- `.archival-prep/blu-ray-file-recommendations.txt`
+- `.archival-prep/file-sizes.tsv` (candidate file data)
+
+**Behavior**
+- Recursively scans files under the invocation directory.
+- Excludes `.archival-prep` from candidates when output is inside the target directory.
+- Builds complete packing plans (all candidate files assigned) for:
+  - **Mixed disk sizes** (both `46.4 GB` and `93.1 GB` usable capacities allowed).
+  - **50 GB only** (`46.4 GB` usable capacity only).
+  - **100 GB only** (`93.1 GB` usable capacity only).
+- Optimizes for minimum total disk count first, then minimum total unused space.
+- Overwrites outputs each run.
+
+### 3) Basename collision report
 
 **Scripts**
 - `scripts/unix/report-basename-collisions.sh`
@@ -108,7 +157,7 @@ Disk counts by size: 100GB=[#], 50GB=[#]
 /full/path/to/file2.ext
 ```
 
-### 3) File duration reports
+### 4) File duration reports
 
 **Scripts**
 - `scripts/unix/report-file-durations.sh`
@@ -161,13 +210,20 @@ Verify:
 ## Typical workflow
 
 1. `cd` into the directory you want to prepare.
-2. Run `folder-size-recommendations` and choose a packing option.
-3. Run `report-basename-collisions` to find likely filename-stem collisions.
-4. Run `report-file-durations` to find possible duration-based duplicates.
-5. Review `.archival-prep/` outputs before staging/burning.
+2. Run `folder-size-recommendations` for top-level folder packing options.
+3. Run `file-size-recommendations` for per-file packing options.
+4. Run `report-basename-collisions` to find likely filename-stem collisions.
+5. Run `report-file-durations` to find possible duration-based duplicates.
+6. Review `.archival-prep/` outputs before staging/burning.
 
 ## Notes
 
 - Scripts create `.archival-prep/` automatically when needed.
 - Reports are deterministic where sorting is applied in script logic.
 - Scripts are read-only with respect to your source media/content.
+
+## Troubleshooting
+
+- **`ffprobe` not found**: install FFmpeg and verify with `ffprobe -version`.
+- **No duration entries**: confirm files are media files with readable duration metadata.
+- **Permission errors writing reports**: set an explicit writable output path (`--output-dir` / `-OutputDir`).
