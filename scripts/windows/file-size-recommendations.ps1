@@ -69,7 +69,6 @@ $capacity100Bytes = [long]([Math]::Round(93.1 * 1GB))
 $mediumWorkloadMinItems = 50
 $mediumWorkloadMaxItems = 500
 $mediumDfsStateBudget = 250000
-$script:packFallbackUsed = $false
 $oversizedItems = @($items | Where-Object { [long]$_.SizeBytes -gt $capacity100Bytes })
 $packableItems = @($items | Where-Object { [long]$_.SizeBytes -le $capacity100Bytes })
 
@@ -79,6 +78,7 @@ function Get-TryPack {
         [long[]]$CapacitiesBytes
     )
 
+    $usedFallback = $false
     $sizes = @($Entries | ForEach-Object { [long]$_.SizeBytes })
     $suffix = New-Object long[] ($sizes.Count + 1)
     for ($i = $sizes.Count - 1; $i -ge 0; $i--) {
@@ -97,10 +97,11 @@ function Get-TryPack {
     function Invoke-BestFitFallbackPack {
         param(
             [long[]]$ItemSizes,
-            [array]$InitialBins
+            [array]$InitialBins,
+            [ref]$UsedFallbackRef
         )
 
-        $script:packFallbackUsed = $true
+        $UsedFallbackRef.Value = $true
         $workingBins = @()
         foreach ($bin in $InitialBins) {
             $workingBins += [PSCustomObject]@{
@@ -111,6 +112,16 @@ function Get-TryPack {
             foreach ($existingPick in $bin.Picks) {
                 $null = $workingBins[-1].Picks.Add([int]$existingPick)
             }
+        }
+
+        if ($ItemSizes.Count -eq 0) {
+            return @($workingBins | ForEach-Object {
+                [PSCustomObject]@{
+                    CapacityBytes = [long]$_.CapacityBytes
+                    UsedBytes = [long]$_.UsedBytes
+                    Picks = @($_.Picks)
+                }
+            })
         }
 
         foreach ($itemIndex in 0..($ItemSizes.Count - 1)) {
@@ -145,7 +156,7 @@ function Get-TryPack {
     }
 
     if ($sizes.Count -gt $mediumWorkloadMaxItems) {
-        $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+        $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins -UsedFallbackRef ([ref]$usedFallback)
         if ($null -eq $fallbackBins) {
             return $null
         }
@@ -172,7 +183,7 @@ function Get-TryPack {
                         Picks = [System.Collections.Generic.List[int]]::new()
                     }
                 }
-                $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins
+                $fallbackBins = Invoke-BestFitFallbackPack -ItemSizes $sizes -InitialBins $bins -UsedFallbackRef ([ref]$usedFallback)
                 if ($null -eq $fallbackBins) {
                     return $null
                 }
@@ -256,13 +267,16 @@ function Get-TryPack {
         throw "Internal pack sanity check failed: picks count $totalPicks does not match entries count $($Entries.Count)."
     }
 
-    return @($bins | ForEach-Object {
-        [PSCustomObject]@{
-            CapacityBytes = [long]$_.CapacityBytes
-            UsedBytes = [long]$_.UsedBytes
-            Picks = @($_.Picks)
-        }
-    })
+    return [PSCustomObject]@{
+        Bins = @($bins | ForEach-Object {
+            [PSCustomObject]@{
+                CapacityBytes = [long]$_.CapacityBytes
+                UsedBytes = [long]$_.UsedBytes
+                Picks = @($_.Picks)
+            }
+        })
+        UsedFallback = [bool]$usedFallback
+    }
 }
 
 function Get-OptimalMixedPlan {
@@ -270,7 +284,7 @@ function Get-OptimalMixedPlan {
 
     if ($Entries.Count -eq 0) {
         if ($oversizedItems.Count -gt 0) { return $null }
-        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
+        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L; UsedFallback = $false }
     }
 
     $totalBytes = [long](($Entries | Measure-Object -Property SizeBytes -Sum).Sum)
@@ -296,13 +310,14 @@ function Get-OptimalMixedPlan {
             for ($i = 0; $i -lt $pair.Count100; $i++) { $caps += $capacity100Bytes }
             for ($i = 0; $i -lt $pair.Count50; $i++) { $caps += $capacity50Bytes }
 
-            $packedBins = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
-            if ($packedBins) {
+            $packResult = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
+            if ($null -ne $packResult) {
                 return [PSCustomObject]@{
-                    Bins = $packedBins
+                    Bins = $packResult.Bins
                     Count100 = $pair.Count100
                     Count50 = $pair.Count50
                     CapacityBytes = [long]$pair.CapacityBytes
+                    UsedFallback = [bool]$packResult.UsedFallback
                 }
             }
         }
@@ -316,7 +331,7 @@ function Get-Optimal50OnlyPlan {
 
     if ($Entries.Count -eq 0) {
         if ($oversizedItems.Count -gt 0) { return $null }
-        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
+        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L; UsedFallback = $false }
     }
 
     $maxItem = ($Entries | Measure-Object -Property SizeBytes -Maximum).Maximum
@@ -327,13 +342,14 @@ function Get-Optimal50OnlyPlan {
     for ($count50 = $startCount; $count50 -le $Entries.Count; $count50++) {
         $caps = @()
         for ($i = 0; $i -lt $count50; $i++) { $caps += $capacity50Bytes }
-        $packedBins = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
-        if ($packedBins) {
+        $packResult = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
+        if ($null -ne $packResult) {
             return [PSCustomObject]@{
-                Bins = $packedBins
+                Bins = $packResult.Bins
                 Count100 = 0
                 Count50 = $count50
                 CapacityBytes = [long]($count50 * $capacity50Bytes)
+                UsedFallback = [bool]$packResult.UsedFallback
             }
         }
     }
@@ -345,7 +361,7 @@ function Get-Optimal100OnlyPlan {
 
     if ($Entries.Count -eq 0) {
         if ($oversizedItems.Count -gt 0) { return $null }
-        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L }
+        return [PSCustomObject]@{ Bins = @(); Count100 = 0; Count50 = 0; CapacityBytes = 0L; UsedFallback = $false }
     }
 
     $maxItem = ($Entries | Measure-Object -Property SizeBytes -Maximum).Maximum
@@ -356,13 +372,14 @@ function Get-Optimal100OnlyPlan {
     for ($count100 = $startCount; $count100 -le $Entries.Count; $count100++) {
         $caps = @()
         for ($i = 0; $i -lt $count100; $i++) { $caps += $capacity100Bytes }
-        $packedBins = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
-        if ($packedBins) {
+        $packResult = Get-TryPack -Entries $Entries -CapacitiesBytes $caps
+        if ($null -ne $packResult) {
             return [PSCustomObject]@{
-                Bins = $packedBins
+                Bins = $packResult.Bins
                 Count100 = $count100
                 Count50 = 0
                 CapacityBytes = [long]($count100 * $capacity100Bytes)
+                UsedFallback = [bool]$packResult.UsedFallback
             }
         }
     }
@@ -408,7 +425,7 @@ function Write-PlanSection {
     $Lines.Add(("Total writable capacity: {0:N3} GiB" -f ($Plan.CapacityBytes / 1GB)))
     $Lines.Add(("Total unused space: {0:N3} GiB" -f ($unusedBytes / 1GB)))
     $Lines.Add('')
-    if ($script:packFallbackUsed) {
+    if ($Plan.UsedFallback) {
         $Lines.Add(("Packing strategy: best-fit fallback used (exact DFS target range: {0}-{1} items, budget {2} explored states)." -f $mediumWorkloadMinItems, $mediumWorkloadMaxItems, $mediumDfsStateBudget))
         $Lines.Add('')
     }
