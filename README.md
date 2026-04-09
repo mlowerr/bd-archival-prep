@@ -225,6 +225,18 @@ Every generated output file now begins with metadata headers containing:
   1. size descending
   2. full path ascending (tie-breaker)
 
+## Testing
+
+A repository-local Unix test suite is available for the scripts under `scripts/unix`:
+
+```bash
+./tests/run-unix-tests.sh
+# or
+make test-unix
+```
+
+The test runner creates temporary workspaces, exercises only the Unix shell scripts, and uses a stubbed `ffprobe` implementation for duration-report coverage.
+
 ## Dependencies
 
 ### Required only for duration scripts: FFmpeg (`ffprobe`)
