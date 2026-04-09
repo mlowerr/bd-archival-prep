@@ -56,17 +56,30 @@ trap 'rm -f "${CANDIDATES_DATA_FILE}"' EXIT
 SCRIPT_NAME="$(basename "$0")"
 REPORT_DATE_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
+folder_size_bytes() {
+  local dir="$1"
+  local size_output=""
+  local size_bytes=""
+
+  if [[ "$OUTPUT_DIR" == "$dir"/* ]]; then
+    size_output="$(find "$dir" -path "$OUTPUT_DIR" -prune -o -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}' || true)"
+    size_bytes="${size_output:-0}"
+  else
+    size_output="$(du -sb "$dir" || true)"
+    size_bytes="$(awk 'NR==1 {print $1}' <<< "${size_output}")"
+    size_bytes="${size_bytes:-0}"
+  fi
+
+  printf '%s\n' "${size_bytes}"
+}
+
 while IFS= read -r -d '' dir; do
   resolved_dir="$(cd -- "$dir" && pwd)"
   if [[ "$resolved_dir" == "$OUTPUT_DIR" ]]; then
     continue
   fi
 
-  if [[ "$OUTPUT_DIR" == "$resolved_dir"/* ]]; then
-    size_bytes="$(find "$dir" -path "$OUTPUT_DIR" -prune -o -type f -printf '%s\n' | awk '{total += $1} END {print total + 0}')"
-  else
-    size_bytes="$(du -sb "$dir" | cut -f1)"
-  fi
+  size_bytes="$(folder_size_bytes "$dir")"
 
   printf '%s	%s
 ' "$dir" "$size_bytes" >> "${CANDIDATES_DATA_FILE}"

@@ -94,6 +94,7 @@ Run from the directory you want to analyze:
 **Behavior**
 - Scans only first-level directories under the target directory.
 - Excludes `.archival-prep` from candidates.
+- Continues writing reports even if some subdirectories cannot be read; permission errors may still be printed to stderr, and reported sizes reflect readable contents only.
 - Writes `folder-sizes.tsv` in **bytes** on both Unix and Windows.
 - Writes `folder-sizes.txt` in the same deterministic order as `folder-sizes.tsv` (size descending, then path ascending).
 - Builds complete packing plans (all candidate directories assigned) for:
