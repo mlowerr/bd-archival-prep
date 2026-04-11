@@ -17,6 +17,7 @@ This repo contains cross-platform (Unix + PowerShell) scripts that generate arch
 - Maintain existing naming patterns and directory structure under `scripts/unix` and `scripts/windows`.
 - When adding options, update usage/help text and README documentation in the same task.
 - Preserve default output location semantics (`.archival-prep` under target unless overridden).
+- When adding shared helpers under platform-specific `lib/` directories, resolve helper paths relative to the invoking script so entry-point scripts remain runnable from any working directory.
 
 ## Validation expectations
 After script changes, run checks relevant to the edited files (for example, shell syntax checks and/or a dry run with `--help`) before finishing.
