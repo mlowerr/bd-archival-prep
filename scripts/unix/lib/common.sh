@@ -66,6 +66,6 @@ bd_write_size_reports_from_datafile() {
 
   {
     bd_print_metadata_header "$script_name" "$report_date_utc" "Target directory" "$target_dir" "$readable_subject"
-    awk -F $'\t' '{ printf "%s | %.3f GiB\\n", $1, $2/1073741824 }' "$data_file"
+    awk -F $'\t' '{ printf "%s | %.3f GiB\n", $1, $2/1073741824 }' "$data_file"
   } > "$readable_file"
 }
