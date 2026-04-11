@@ -144,7 +144,7 @@ function Get-TryPack {
 
         while ($stack.Count -gt 0) {
             $statesVisited++
-            if ($MediumWorkloadMinItems -le $sizes.Count -and $sizes.Count -le $MediumWorkloadMaxItems -and $statesVisited -gt $MediumDfsStateBudget) {
+            if ($statesVisited -gt $MediumDfsStateBudget) {
                 $bins = @()
                 foreach ($cap in $CapacitiesBytes) {
                     $bins += [PSCustomObject]@{
