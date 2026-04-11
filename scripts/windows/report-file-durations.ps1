@@ -8,6 +8,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$scriptRoot = Split-Path -Parent $PSCommandPath
+. (Join-Path $scriptRoot 'lib/Common.ps1')
+
 $outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
 
 $ffprobe = Get-Command ffprobe -ErrorAction SilentlyContinue
@@ -20,38 +24,17 @@ Example (winget): winget install Gyan.FFmpeg
     exit 1
 }
 
-$startDir = (Resolve-Path -LiteralPath $TargetDir).Path
-if (-not $outputDirProvided) {
-    $OutputDir = Join-Path $startDir '.archival-prep'
-}
-if (-not (Test-Path -LiteralPath $OutputDir)) {
-    New-Item -LiteralPath $OutputDir -ItemType Directory -Force | Out-Null
-}
-$outDir = (Resolve-Path -LiteralPath $OutputDir).Path
+$envInfo = Initialize-ReportEnvironment -TargetDir $TargetDir -OutputDir $OutputDir -OutputDirProvided $outputDirProvided -ScriptPath $PSCommandPath
+$startDir = $envInfo.TargetDir
+$outDir = $envInfo.OutputDir
+$scriptName = $envInfo.ScriptName
+$reportDateUtc = $envInfo.ReportDateUtc
 
 $fileDurationsPath = Join-Path $outDir 'file-durations.txt'
 $duplicatesPath = Join-Path $outDir 'possible-duplicates-by-duration.txt'
 
-$scriptName = Split-Path -Leaf $PSCommandPath
-$reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-
 $records = New-Object System.Collections.Generic.List[object]
 $unreadableFiles = New-Object System.Collections.Generic.List[string]
-
-function Test-IsPathUnder {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ParentPath,
-        [Parameter(Mandatory = $true)]
-        [string]$ChildPath
-    )
-
-    $parentFullPath = [System.IO.Path]::TrimEndingDirectorySeparator([System.IO.Path]::GetFullPath($ParentPath))
-    $childFullPath = [System.IO.Path]::GetFullPath($ChildPath)
-    $parentPrefix = Join-Path -Path $parentFullPath -ChildPath ''
-
-    return $childFullPath.StartsWith($parentPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-}
 
 $candidateFiles = Get-ChildItem -LiteralPath $startDir -File -Recurse -Force |
     Sort-Object FullName |
@@ -352,12 +335,7 @@ if ($usedLegacyFallback) {
     Write-Warning 'Runspace pool mode was unavailable; fell back to Start-Job worker mode.'
 }
 
-$durationLines = New-Object System.Collections.Generic.List[string]
-$durationLines.Add("# Script: $scriptName")
-$durationLines.Add("# Report date (UTC): $reportDateUtc")
-$durationLines.Add("# Reporting on: $startDir")
-$durationLines.Add('# Subject: file durations from ffprobe (seconds)')
-$durationLines.Add('')
+$durationLines = New-MetadataHeaderLines -ScriptName $scriptName -ReportDateUtc $reportDateUtc -LocationLabel 'Reporting on' -LocationValue $startDir -Subject 'file durations from ffprobe (seconds)'
 $records |
     Sort-Object FullPath |
     ForEach-Object { $durationLines.Add(("{0} | {1}" -f $_.FullPath, $_.Duration)) }
@@ -368,12 +346,11 @@ $unreadableFiles |
     ForEach-Object { $durationLines.Add($_) }
 Set-Content -LiteralPath $fileDurationsPath -Value $durationLines -Encoding UTF8
 
+$duplicateHeaderLines = New-MetadataHeaderLines -ScriptName $scriptName -ReportDateUtc $reportDateUtc -LocationLabel 'Reporting on' -LocationValue $startDir -Subject 'possible duplicates grouped by identical normalized duration'
 $sb = New-Object System.Text.StringBuilder
-[void]$sb.AppendLine("# Script: $scriptName")
-[void]$sb.AppendLine("# Report date (UTC): $reportDateUtc")
-[void]$sb.AppendLine("# Reporting on: $startDir")
-[void]$sb.AppendLine('# Subject: possible duplicates grouped by identical normalized duration')
-[void]$sb.AppendLine('')
+foreach ($line in $duplicateHeaderLines) {
+    [void]$sb.AppendLine($line)
+}
 
 $groupIndex = 0
 $records |
