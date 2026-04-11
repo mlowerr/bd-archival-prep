@@ -6,26 +6,23 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$scriptRoot = Split-Path -Parent $PSCommandPath
+. (Join-Path $scriptRoot 'lib/Common.ps1')
+
 $outputDirProvided = $PSBoundParameters.ContainsKey('OutputDir')
-
-$startDir = (Resolve-Path -LiteralPath $TargetDir).ProviderPath
-if (-not $outputDirProvided) {
-    $OutputDir = Join-Path -Path $startDir -ChildPath '.archival-prep'
-}
-if (-not (Test-Path -LiteralPath $OutputDir)) {
-    New-Item -ItemType Directory -LiteralPath $OutputDir -Force | Out-Null
-}
-$outDir = (Resolve-Path -LiteralPath $OutputDir).ProviderPath
+$envInfo = Initialize-ReportEnvironment -TargetDir $TargetDir -OutputDir $OutputDir -OutputDirProvided $outputDirProvided -ScriptPath $PSCommandPath
+$startDir = $envInfo.TargetDir
+$outDir = $envInfo.OutputDir
+$scriptName = $envInfo.ScriptName
+$reportDateUtc = $envInfo.ReportDateUtc
 $outFile = Join-Path -Path $outDir -ChildPath 'basename-collisions.txt'
-
-$scriptName = Split-Path -Leaf $PSCommandPath
-$reportDateUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
 
 $groups = @{}
 
 Get-ChildItem -LiteralPath $startDir -File -Recurse -Force | ForEach-Object {
     $fullPath = $_.FullName
-    if ($fullPath -eq $outFile -or $fullPath.StartsWith((Join-Path $outDir ''), [System.StringComparison]::OrdinalIgnoreCase)) {
+    if ($fullPath -eq $outFile -or (Test-IsPathUnder -ParentPath $outDir -ChildPath $fullPath)) {
         return
     }
 
@@ -42,13 +39,7 @@ Get-ChildItem -LiteralPath $startDir -File -Recurse -Force | ForEach-Object {
     $groups[$baseName].Add($fullPath)
 }
 
-$output = New-Object System.Collections.Generic.List[string]
-$output.Add("# Script: $scriptName")
-$output.Add("# Report date (UTC): $reportDateUtc")
-$output.Add("# Reporting on: $startDir")
-$output.Add('# Subject: basename collisions (same filename stem with 2+ files)')
-$output.Add('')
-
+$output = New-MetadataHeaderLines -ScriptName $scriptName -ReportDateUtc $reportDateUtc -LocationLabel 'Reporting on' -LocationValue $startDir -Subject 'basename collisions (same filename stem with 2+ files)'
 $firstGroup = $true
 $keys = $groups.Keys | Sort-Object
 foreach ($key in $keys) {
