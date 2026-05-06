@@ -16,14 +16,15 @@ All outputs are written to `.archival-prep/` by default.
 
 ## What this repo contains
 
-This repo provides four script sets, each with Unix and Windows PowerShell versions:
+This repo provides five user-facing script sets:
 
-1. **Blu-ray folder packing recommendations** (first-level folder packing).
-2. **Blu-ray file packing recommendations** (recursive per-file packing).
-3. **Basename collision report** (same filename stem across files).
-4. **File duration reports** (all probed durations + possible duplicates by duration).
+1. **Blu-ray folder packing recommendations** (first-level folder packing; Unix + Windows PowerShell).
+2. **Blu-ray file packing recommendations** (recursive per-file packing; Unix + Windows PowerShell).
+3. **Apply Blu-ray file recommendations** (move files into disk folders from a generated recommendation report; Unix only).
+4. **Basename collision report** (same filename stem across files; Unix + Windows PowerShell).
+5. **File duration reports** (all probed durations + possible duplicates by duration; Unix + Windows PowerShell).
 
-By default, all scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
+By default, report-generation scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
 - `.archival-prep/`
 
@@ -34,6 +35,22 @@ You can optionally override both the scan target and output location:
 - Duration scripts also support worker limits:
   - Unix: `--jobs <N>` (default: `3`)
   - PowerShell: `-Jobs <int>` (default: `3`)
+
+## Repository layout
+
+| Path | Purpose |
+|---|---|
+| `Makefile` | Convenience entry point for the Unix test suite (`make test-unix`). |
+| `scripts/unix/*.sh` | Unix/macOS entry-point scripts for generating reports and applying file-packing recommendations. |
+| `scripts/unix/apply-disk-plan.py` | Standalone Python helper that can parse a `blu-ray-file-recommendations.txt` report and move files into disk folders interactively. The shell `apply-blu-ray-file-recommendations.sh` is the recommended Unix entry point because it performs stricter validation and confirmation. |
+| `scripts/unix/lib/common.sh` | Shared Unix shell helper functions for path resolution, metadata headers, and report-directory handling. |
+| `scripts/unix/lib/blu_ray_packing.py` | Shared Unix packing engine used by folder and file recommendation scripts. |
+| `scripts/unix/lib/plan_and_move.sh` | Unix convenience driver that runs file-size recommendations and then invokes the Python apply helper. It is intended for local customization before use. |
+| `scripts/windows/*.ps1` | Windows PowerShell entry-point scripts for report generation. |
+| `scripts/windows/lib/Common.ps1` | Shared PowerShell helper functions for path resolution, metadata headers, and report-directory handling. |
+| `scripts/windows/lib/BluRayPacking.ps1` | Shared PowerShell packing engine used by folder and file recommendation scripts. |
+| `tests/run-unix-tests.sh` | Main Unix shell test runner covering the Unix entry-point scripts. |
+| `tests/test-apply-disk-plan_py.sh` | Standalone smoke test for the Python apply helper. |
 
 ## Quick start
 
@@ -271,9 +288,12 @@ A repository-local Unix test suite is available for the scripts under `scripts/u
 ./tests/run-unix-tests.sh
 # or
 make test-unix
+
+# Optional standalone smoke test for the Python helper:
+bash ./tests/test-apply-disk-plan_py.sh
 ```
 
-The test runner creates temporary workspaces, exercises only the Unix shell scripts, and uses a stubbed `ffprobe` implementation for duration-report coverage.
+The main test runner creates temporary workspaces, exercises the Unix shell entry-point scripts (including the Unix apply script), and uses a stubbed `ffprobe` implementation for duration-report coverage. The separate Python smoke test focuses on `scripts/unix/apply-disk-plan.py`.
 
 ## Dependencies
 
@@ -299,9 +319,9 @@ Verify:
 
 ## Notes
 
-- Scripts create `.archival-prep/` automatically when needed.
+- Report-generation scripts create `.archival-prep/` automatically when needed.
 - Size report ordering is deterministic and aligned with candidate TSV ordering.
-- Scripts are read-only with respect to your source media/content.
+- Report-generation scripts are read-only with respect to your source media/content. The Unix apply scripts intentionally move source files after plan selection, destination selection, and confirmation; use `--dry-run` first when validating a move plan.
 
 ## Troubleshooting
 
