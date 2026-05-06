@@ -259,8 +259,9 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 - Supports `--dry-run` to preview folder creation and file moves without changing the filesystem.
 - Never writes into an existing destination disk folder; if a computed folder already exists, the script prompts for a new folder name for that disk.
 - Continues processing when individual files cannot be moved; missing sources and move failures are logged as warnings and summarized at the end.
-- Moves files into the chosen destination root while preserving the source tree after `/mnt/<drive-letter>/`.
-  - Example: `/mnt/d/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4` becomes `[disk-folder]/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4`
+- Moves files into the chosen destination root while preserving only the portion of each source path below the target directory recorded in the recommendation report.
+  - Example: if the recommendation report target directory is `/mnt/d`, `/mnt/d/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4` becomes `[disk-folder]/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4`.
+  - Example: if the recommendation report target directory is `/a/b`, `/a/b/c/file.extension` becomes `[disk-folder]/c/file.extension`.
 - Removes the source files from their original locations by using `mv`.
 
 ## Report metadata headers

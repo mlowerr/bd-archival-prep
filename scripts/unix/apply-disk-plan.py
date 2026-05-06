@@ -27,6 +27,7 @@ def parse_recommendation_file(file_path):
 
     plans = {}
     current_plan = None
+    target_dir = None
     
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -41,6 +42,13 @@ def parse_recommendation_file(file_path):
     i = 0
     while i < len(lines):
         line = lines[i].strip()
+
+        if line.startswith('# Target directory: '):
+            raw_target_dir = line[len('# Target directory: '):].strip()
+            if raw_target_dir:
+                target_dir = os.path.realpath(os.path.expanduser(raw_target_dir))
+            i += 1
+            continue
         
         plan_match = plan_header_pattern.match(line)
         if plan_match:
@@ -73,15 +81,24 @@ def parse_recommendation_file(file_path):
         print("Error: No valid plans found in the recommendation file.")
         sys.exit(1)
         
-    return plans
+    return plans, target_dir
 
-def strip_mnt_prefix(path):
-    # Search for /mnt/[drive letter]/ anywhere in the path and return what follows it.
-    # If not found, return the original path.
+def source_path_to_relative(path, target_dir):
+    if target_dir:
+        real_path = os.path.realpath(path)
+        try:
+            if os.path.commonpath([target_dir, real_path]) == target_dir:
+                rel_path = os.path.relpath(real_path, target_dir)
+                if rel_path != os.curdir and not rel_path.startswith(os.pardir + os.sep):
+                    return rel_path
+        except ValueError:
+            pass
+
+    # Legacy fallback for reports that predate the target-directory metadata header.
     match = re.search(r'/mnt/[a-zA-Z]/(.*)', path)
     if match:
         return match.group(1)
-    return path
+    return path.lstrip(os.sep)
 
 def main():
     args = parse_args()
@@ -94,7 +111,7 @@ def main():
         print(f"Error: Valid recommendation file path required.")
         sys.exit(1)
 
-    plans = parse_recommendation_file(rec_file)
+    plans, target_dir = parse_recommendation_file(rec_file)
     
     print("\nAvailable Plans:")
     plan_names = list(plans.keys())
@@ -138,11 +155,7 @@ def main():
         print(f"\nProcessing {disk_folder_name}...")
         
         for src_path in disk.get('files', []):
-            rel_path = strip_mnt_prefix(src_path)
-            # Ensure rel_path doesn't start with / for os.path.join to work as expected
-            if rel_path.startswith('/'):
-                rel_path = rel_path.lstrip('/')
-                
+            rel_path = source_path_to_relative(src_path, target_dir)
             final_dest_path = os.path.join(disk_path, rel_path)
             dest_parent = os.path.dirname(final_dest_path)
             

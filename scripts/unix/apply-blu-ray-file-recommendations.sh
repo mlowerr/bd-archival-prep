@@ -170,24 +170,46 @@ prompt_destination_root() {
   done
 }
 
+extract_report_target_dir() {
+  local report_path="$1"
+  local line target_dir
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      "# Target directory: "*)
+        target_dir="${line#\# Target directory: }"
+        target_dir="$(strip_trailing_slashes "$target_dir")"
+        [[ -n "$target_dir" && -d "$target_dir" ]] || return 1
+        bd_resolve_dir "$target_dir"
+        return 0
+        ;;
+      "#"*)
+        continue
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done < "$report_path"
+
+  return 1
+}
+
 source_path_to_relative() {
   local source_path="$1"
   local prefix="${SOURCE_ROOT%/}"
-  local without_prefix drive_letter relative_path
+  local relative_path
 
   case "$source_path" in
     "$prefix"/*)
-      without_prefix="${source_path#"$prefix"/}"
+      relative_path="${source_path#"$prefix"/}"
       ;;
     *)
       return 1
       ;;
   esac
 
-  drive_letter="${without_prefix%%/*}"
-  [[ "$drive_letter" =~ ^[[:alpha:]]$ ]] || return 1
-  relative_path="${without_prefix#*/}"
-  [[ -n "$relative_path" && "$relative_path" != "$without_prefix" ]] || return 1
+  [[ -n "$relative_path" && "$relative_path" != /* ]] || return 1
   printf '%s\n' "$relative_path"
 }
 
@@ -532,7 +554,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SOURCE_ROOT="$(expand_user_path "${BD_ARCHIVAL_SOURCE_ROOT:-/mnt}")"
+SOURCE_ROOT=""
 PLAN_DATA_FILE="$(mktemp)"
 MOVE_PLAN_FILE="$(mktemp)"
 trap 'rm -f "${PLAN_DATA_FILE}" "${MOVE_PLAN_FILE}"' EXIT
@@ -555,6 +577,13 @@ if [[ -n "$RECOMMENDATIONS_FILE" ]]; then
   [[ -n "$RECOMMENDATIONS_FILE" ]] || die "Recommendations file does not exist: $raw_recommendations_file"
 else
   prompt_recommendations_file
+fi
+
+SOURCE_ROOT="$(extract_report_target_dir "$RECOMMENDATIONS_FILE" 2>/dev/null || true)"
+if [[ -z "$SOURCE_ROOT" ]]; then
+  raw_source_root="${BD_ARCHIVAL_SOURCE_ROOT:-}"
+  [[ -n "$raw_source_root" ]] || die "Recommendations file does not include a readable target directory metadata header. Regenerate the report with file-size-recommendations.sh."
+  SOURCE_ROOT="$(bd_resolve_dir "$(expand_user_path "$raw_source_root")")"
 fi
 
 if [[ -n "$DESTINATION_ROOT" ]]; then

@@ -320,9 +320,9 @@ EOF
 
   assert_contains <(printf '%s\n' "$output") "Moved 3 files into 1 disk folder(s)"
   assert_dir_exists "$destination/ComboDisk-Disk1-93.085GiB"
-  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/Pearl Jam/[1992.06.27] Pinkpop - Alive.mp4"
-  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/Grateful Dead/1977-05-08 Cornell - Morning Dew.mp4"
-  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/Nirvana/nested/1991-10-31 Paramount - Drain You.mov"
+  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/d/Pearl Jam/[1992.06.27] Pinkpop - Alive.mp4"
+  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/d/Grateful Dead/1977-05-08 Cornell - Morning Dew.mp4"
+  assert_file_exists "$destination/ComboDisk-Disk1-93.085GiB/z/Nirvana/nested/1991-10-31 Paramount - Drain You.mov"
   assert_path_not_exists "$original_one"
   assert_path_not_exists "$original_two"
   assert_path_not_exists "$original_three"
@@ -360,7 +360,7 @@ EOF
   output="$(printf '1\nLA\nLA-Alt-Disk1-93.085GiB\nYES\n' | BD_ARCHIVAL_SOURCE_ROOT="$source_root" "$REPO_ROOT/scripts/unix/apply-blu-ray-file-recommendations.sh" --recommendations-file "$report" --destination-root "$destination" 2>&1)"
 
   assert_contains <(printf '%s\n' "$output") "Destination folder already exists or is already selected:"
-  assert_file_exists "$destination/LA-Alt-Disk1-93.085GiB/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4"
+  assert_file_exists "$destination/LA-Alt-Disk1-93.085GiB/d/Pearl Jam/1991-08-03 Drop in the Park - Even Flow.mp4"
   assert_dir_exists "$destination/LA-Disk1-93.085GiB"
 }
 
@@ -475,7 +475,7 @@ YES
 ' "$output") "Warning: Source file not found, skipping: $missing_source"
   assert_contains <(printf '%s
 ' "$output") "Completed with warnings: moved 1 file(s)"
-  assert_file_exists "$destination/Archive-Disk1-93.085GiB/Pearl Jam/1992-06-27 Pinkpop - Alive.mp4"
+  assert_file_exists "$destination/Archive-Disk1-93.085GiB/d/Pearl Jam/1992-06-27 Pinkpop - Alive.mp4"
   assert_path_not_exists "$existing_source"
 }
 
@@ -514,7 +514,7 @@ YES
   assert_contains <(printf '%s
 ' "$output") "DRY RUN: would create disk folder $destination/Preview-Disk1-93.085GiB"
   assert_contains <(printf '%s
-' "$output") "DRY RUN: would move $source_file -> $destination/Preview-Disk1-93.085GiB/Nirvana/1991-10-31 Paramount - Drain You.mov"
+' "$output") "DRY RUN: would move $source_file -> $destination/Preview-Disk1-93.085GiB/d/Nirvana/1991-10-31 Paramount - Drain You.mov"
   assert_contains <(printf '%s
 ' "$output") "Dry run complete: 1 file(s) would be moved"
   assert_file_exists "$source_file"
