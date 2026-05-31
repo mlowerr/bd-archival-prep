@@ -3,7 +3,7 @@ import csv
 import math
 import sys
 
-CAP_50_BYTES = int(round(46.4 * 1024**3))
+CAP_50_BYTES = int(round(46.5 * 1024**3))
 CAP_100_BYTES = int(round(93.1 * 1024**3))
 MEDIUM_WORKLOAD_MIN_ITEMS = 50
 MEDIUM_WORKLOAD_MAX_ITEMS = 500
@@ -251,7 +251,7 @@ def write_plan(output_handle, header, plan, context):
     total_disks = plan["n100"] + plan["n50"]
     unused = plan["capacity"] - total_data
     output_handle.write(
-        f"Combination: {plan['n100']} x 100 GB marketed (93.1 GiB) + {plan['n50']} x 50 GB marketed (46.4 GiB)\n"
+        f"Combination: {plan['n100']} x 100 GB marketed (93.1 GiB) + {plan['n50']} x 50 GB marketed (46.5 GiB)\n"
     )
     output_handle.write(f"Total disks: {total_disks}\n")
     output_handle.write(
@@ -302,13 +302,13 @@ def main():
         output_handle.write("\n")
         write_plan(
             output_handle,
-            "OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)",
+            "OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB)",
             find_optimal_mixed_plan(context),
             context,
         )
         write_plan(
             output_handle,
-            "OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)",
+            "OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable)",
             find_optimal_50_only_plan(context),
             context,
         )

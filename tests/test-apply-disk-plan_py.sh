@@ -25,14 +25,14 @@ touch "${TEST_DIR}/mnt/z/Phish/2023-12-31-MSG.mov"
 cat <<EOF > recommendations.txt
 # Target directory: ${TEST_DIR}
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
 ${TEST_DIR}/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4
 ${TEST_DIR}/mnt/d/Grateful Dead/1977-05-08-Cornell.mkv
 ${TEST_DIR}/mnt/z/Phish/2023-12-31-MSG.mov
 
-=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ===
-Disk [1 of 2] [46.4 GiB] | Size used: 40.000 GiB | Unused space: 6.400 GiB
+=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
+Disk [1 of 2] [46.5 GiB] | Size used: 40.000 GiB | Unused space: 6.500 GiB
 ${TEST_DIR}/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4
 EOF
 

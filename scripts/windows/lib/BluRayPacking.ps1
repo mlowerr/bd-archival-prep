@@ -7,7 +7,7 @@ function New-BluRayPackingContext {
         [array]$Items
     )
 
-    $capacity50Bytes = [long]([Math]::Round(46.4 * 1GB))
+    $capacity50Bytes = [long]([Math]::Round(46.5 * 1GB))
     $capacity100Bytes = [long]([Math]::Round(93.1 * 1GB))
     $mediumWorkloadMinItems = 50
     $mediumWorkloadMaxItems = 500
@@ -417,7 +417,7 @@ function Write-PlanSection {
     $totalDisks = $Plan.Count100 + $Plan.Count50
     $unusedBytes = [long]$Plan.CapacityBytes - $totalBytes
 
-    $Lines.Add(("Combination: {0} x 100 GB marketed (93.1 GiB) + {1} x 50 GB marketed (46.4 GiB)" -f $Plan.Count100, $Plan.Count50))
+    $Lines.Add(("Combination: {0} x 100 GB marketed (93.1 GiB) + {1} x 50 GB marketed (46.5 GiB)" -f $Plan.Count100, $Plan.Count50))
     $Lines.Add(("Total disks: {0}" -f $totalDisks))
     $Lines.Add(("Disk counts by size (marketed): 100GB={0}, 50GB={1}" -f $Plan.Count100, $Plan.Count50))
     $Lines.Add(("Total data size: {0:N3} GiB" -f ($totalBytes / 1GB)))
@@ -482,8 +482,8 @@ function Write-BluRayRecommendationFile {
     }
     $recommendationLines.Add('')
 
-    Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Context $Context -Lines $recommendationLines
-    Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable)' -Plan $only50Plan -Context $Context -Lines $recommendationLines
+    Write-PlanSection -Header 'OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB)' -Plan $mixedPlan -Context $Context -Lines $recommendationLines
+    Write-PlanSection -Header 'OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable)' -Plan $only50Plan -Context $Context -Lines $recommendationLines
     Write-PlanSection -Header 'OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable)' -Plan $only100Plan -Context $Context -Lines $recommendationLines
 
     Set-Content -LiteralPath $RecommendationsFile -Value $recommendationLines -Encoding UTF8

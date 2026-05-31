@@ -126,6 +126,29 @@ $target/sub/c.bin	1024"
   assert_contains "$recommendations" "=== OPTIMAL 100 GB-ONLY DISK PLAN"
 }
 
+test_file_size_recommendations_uses_46_5_gib_for_50gb_disks() {
+  local ws target out recommendations bytes
+  ws="$(new_workspace)"
+  target="$ws/target"
+  mkdir -p "$target"
+
+  bytes="$(python3 - <<'PYBYTES'
+print(round(46.45 * 1024**3))
+PYBYTES
+)"
+  truncate -s "$bytes" "$target/just-over-old-50gb-capacity.bin"
+
+  "$REPO_ROOT/scripts/unix/file-size-recommendations.sh" --target-dir "$target" >/dev/null
+
+  out="$target/.archival-prep"
+  recommendations="$out/blu-ray-file-recommendations.txt"
+
+  assert_contains "$recommendations" "=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ==="
+  assert_contains "$recommendations" "Combination: 0 x 100 GB marketed (93.1 GiB) + 1 x 50 GB marketed (46.5 GiB)"
+  assert_contains "$recommendations" "Disk [1 of 1] [46.5 GiB] | Size used: 46.450 GiB | Unused space: 0.050 GiB"
+  assert_contains "$recommendations" "$target/just-over-old-50gb-capacity.bin"
+}
+
 test_folder_size_recommendations() {
   local ws target out candidates readable recommendations alpha_size beta_size expected actual
   ws="$(new_workspace)"
@@ -296,8 +319,8 @@ test_apply_blu_ray_file_recommendations_moves_files() {
 === OVERSIZED ===
 None.
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 Disk counts by size (marketed): 100GB=1, 50GB=0
 Total data size: 93.085 GiB
@@ -309,7 +332,7 @@ $original_one
 $original_two
 $original_three
 
-=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ===
+=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 No feasible plan found.
 
 === OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
@@ -349,8 +372,8 @@ test_apply_blu_ray_file_recommendations_reprompts_for_existing_disk_folder() {
 === OVERSIZED ===
 None.
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
@@ -382,8 +405,8 @@ test_apply_blu_ray_file_recommendations_requires_confirmation() {
 # Target directory: $source_root
 # Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
@@ -417,13 +440,13 @@ test_apply_blu_ray_file_recommendations_rejects_malformed_selected_plan() {
 # Target directory: $source_root
 # Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
 
-=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ===
+=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 No feasible plan found.
 EOF
 
@@ -457,8 +480,8 @@ test_apply_blu_ray_file_recommendations_continues_on_missing_sources() {
 # Target directory: $source_root
 # Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
@@ -498,8 +521,8 @@ test_apply_blu_ray_file_recommendations_dry_run_leaves_files_in_place() {
 # Target directory: $source_root
 # Subject: optimal Blu-ray file packing recommendations (marketed GB labels with binary GiB capacities)
 
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: 1 x 100 GB marketed (93.1 GiB) + 0 x 50 GB marketed (46.5 GiB)
 Total disks: 1
 
 Disk [1 of 1] [93.1 GiB] | Size used: 93.085 GiB | Unused space: 0.015 GiB
@@ -522,6 +545,7 @@ YES
 }
 
 run_test "file-size-recommendations.sh generates deterministic reports" test_file_size_recommendations
+run_test "file-size-recommendations.sh uses 46.5 GiB for 50 GB disks" test_file_size_recommendations_uses_46_5_gib_for_50gb_disks
 run_test "folder-size-recommendations.sh generates deterministic reports" test_folder_size_recommendations
 run_test "report-basename-collisions.sh reports sorted collision groups" test_report_basename_collisions
 run_test "report-file-durations.sh handles numeric and unreadable durations" test_report_file_durations

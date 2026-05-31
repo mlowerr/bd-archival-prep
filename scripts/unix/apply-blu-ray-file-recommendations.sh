@@ -4,9 +4,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"
 
-readonly PLAN_MIXED='=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ==='
-readonly PLAN_50='=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ==='
+readonly PLAN_MIXED='=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ==='
+readonly PLAN_50='=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ==='
 readonly PLAN_100='=== OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ==='
+readonly PLAN_MIXED_LEGACY='=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ==='
+readonly PLAN_50_LEGACY='=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ==='
 
 trim_whitespace() {
   local value="$1"
@@ -80,6 +82,17 @@ Options:
   --dry-run                     Show what would happen without creating folders or moving files
   -h, --help                    Show this help
 USAGE
+}
+
+
+selected_plan_header_matches() {
+  local line="$1"
+  local selected_header="$2"
+
+  [[ "$line" == "$selected_header" ]] && return 0
+  [[ "$selected_header" == "$PLAN_MIXED" && "$line" == "$PLAN_MIXED_LEGACY" ]] && return 0
+  [[ "$selected_header" == "$PLAN_50" && "$line" == "$PLAN_50_LEGACY" ]] && return 0
+  return 1
 }
 
 validate_folder_name() {
@@ -225,7 +238,7 @@ parse_recommendation_plan() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" == \#* ]] && continue
 
-    if [[ "$line" == "$selected_header" ]]; then
+    if selected_plan_header_matches "$line" "$selected_header"; then
       [[ "$section_found" == false ]] || die "Malformed selected plan in $report_path: duplicate plan header."
       section_found=true
       in_section=true

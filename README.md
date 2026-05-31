@@ -6,8 +6,8 @@ Cross-platform scripts for preparing large directories for optical archival work
 
 | Need | Script (Unix) | Script (Windows PowerShell) | Main output(s) |
 |---|---|---|---|
-| Pack top-level folders onto 50 GB / 100 GB marketed Blu-ray media (46.4 GiB / 93.1 GiB usable) | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
-| Pack individual files onto 50 GB / 100 GB marketed Blu-ray media (46.4 GiB / 93.1 GiB usable) | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
+| Pack top-level folders onto 50 GB / 100 GB marketed Blu-ray media (46.5 GiB / 93.1 GiB usable) | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
+| Pack individual files onto 50 GB / 100 GB marketed Blu-ray media (46.5 GiB / 93.1 GiB usable) | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
 | Move files into per-disk folders from `blu-ray-file-recommendations.txt` | `scripts/unix/apply-blu-ray-file-recommendations.sh` | — | moved files under user-selected disk folders |
 | Find filename-stem collisions (`name.ext1` vs `name.ext2`) | `scripts/unix/report-basename-collisions.sh` | `scripts/windows/report-basename-collisions.ps1` | `basename-collisions.txt` |
 | Report durations + flag potential duplicates by equal duration | `scripts/unix/report-file-durations.sh` | `scripts/windows/report-file-durations.ps1` | `file-durations.txt`, `possible-duplicates-by-duration.txt` |
@@ -131,8 +131,8 @@ Run from the directory you want to analyze:
 - Writes `folder-sizes.tsv` in **bytes** on both Unix and Windows.
 - Writes `folder-sizes.txt` in the same deterministic order as `folder-sizes.tsv` (size descending, then path ascending).
 - Builds complete packing plans (all candidate directories assigned) for:
-  - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
-  - **50 GB only** (`46.4 GiB` usable capacity only).
+  - **Mixed disk sizes** (both `46.5 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
+  - **50 GB only** (`46.5 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
 - Precomputes oversized directories (`> 93.1 GiB`) and lists them in a dedicated `=== OVERSIZED ===` section in the recommendation report.
 - Excludes oversized directories from all packable plan calculations.
@@ -143,13 +143,13 @@ Run from the directory you want to analyze:
 **Recommendation report format**
 
 ```text
-=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.4 GiB + 100 GB marketed / 93.1 GiB) ===
-Combination: [#] x 100 GB marketed (93.1 GiB) + [#] x 50 GB marketed (46.4 GiB)
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Combination: [#] x 100 GB marketed (93.1 GiB) + [#] x 50 GB marketed (46.5 GiB)
 Total disks: [count]
 Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 ...
 
-=== OPTIMAL 50 GB-ONLY DISK PLAN (46.4 GiB usable) ===
+=== OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 ...
 
 === OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
@@ -173,8 +173,8 @@ Disk counts by size (marketed): 100GB=[#], 50GB=[#]
 - Writes `file-sizes.tsv` in **bytes** on both Unix and Windows.
 - Writes `file-sizes.txt` in the same deterministic order as `file-sizes.tsv` (size descending, then path ascending).
 - Builds complete packing plans (all candidate files assigned) for:
-  - **Mixed disk sizes** (both `46.4 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
-  - **50 GB only** (`46.4 GiB` usable capacity only).
+  - **Mixed disk sizes** (both `46.5 GiB` and `93.1 GiB` usable capacities allowed (marketed as 50 GB and 100 GB)).
+  - **50 GB only** (`46.5 GiB` usable capacity only).
   - **100 GB only** (`93.1 GiB` usable capacity only).
 - Precomputes oversized files (`> 93.1 GiB`) and lists them in a dedicated `=== OVERSIZED ===` section in the recommendation report.
 - Excludes oversized files from all packable plan calculations.
