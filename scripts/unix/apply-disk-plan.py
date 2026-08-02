@@ -9,6 +9,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Apply a Blu-ray disk plan by moving files into disk-specific folders.")
     parser.add_argument("--recommendations", help="Path to the recommendation file (blu-ray-file-recommendations.txt).")
     parser.add_argument("--destination", help="Base path where disk folders will be created.")
+    parser.add_argument("--disk-size", help="Plan to apply: mixed, 50, 100, a plan number, or a full plan heading.")
+    parser.add_argument("--base-name", help="Base name for the disk folders.")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files.")
     return parser.parse_args()
 
@@ -83,6 +85,43 @@ def parse_recommendation_file(file_path):
         
     return plans, target_dir
 
+def select_plan(plan_names, value):
+    """Resolve a command-line plan value without changing report plan ordering."""
+    normalized = value.strip().casefold()
+    matches = []
+
+    size_aliases = {
+        "mixed": "mixed disk plan",
+        "50": "50 gb-only disk plan",
+        "50gb": "50 gb-only disk plan",
+        "50 gb": "50 gb-only disk plan",
+        "100": "100 gb-only disk plan",
+        "100gb": "100 gb-only disk plan",
+        "100 gb": "100 gb-only disk plan",
+    }
+
+    if normalized in size_aliases:
+        heading_fragment = size_aliases[normalized]
+        matches = [name for name in plan_names if heading_fragment in name.casefold()]
+    elif normalized.isdigit():
+        index = int(normalized)
+        if 1 <= index <= len(plan_names):
+            matches = [plan_names[index - 1]]
+    else:
+        for name in plan_names:
+            folded_name = name.casefold()
+            is_match = normalized == folded_name
+            if is_match:
+                matches.append(name)
+
+    if len(matches) == 1:
+        return matches[0]
+
+    choices = ", ".join(f"{idx} ({name})" for idx, name in enumerate(plan_names, 1))
+    reason = "ambiguous" if len(matches) > 1 else "invalid"
+    print(f"Error: Disk size/plan value {value!r} is {reason}. Accepted choices: {choices}")
+    sys.exit(1)
+
 def source_path_to_relative(path, target_dir):
     if target_dir:
         real_path = os.path.realpath(path)
@@ -118,16 +157,16 @@ def main():
     for idx, name in enumerate(plan_names, 1):
         print(f"{idx}. {name}")
     
-    choice = get_input(f"Select a plan (1-{len(plan_names)})")
-    try:
-        selected_plan_name = plan_names[int(choice) - 1]
-    except (ValueError, IndexError):
-        print("Invalid selection.")
-        sys.exit(1)
+    choice = args.disk_size
+    if choice is None:
+        choice = get_input(f"Select a plan (1-{len(plan_names)})")
+    selected_plan_name = select_plan(plan_names, choice or "")
     
     selected_plan = plans[selected_plan_name]
     
-    base_name = get_input("Base name for disks")
+    base_name = args.base_name
+    if base_name is None:
+        base_name = get_input("Base name for disks")
     if not base_name:
         print("Error: Base name is required.")
         sys.exit(1)

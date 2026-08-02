@@ -34,16 +34,65 @@ ${TEST_DIR}/mnt/z/Phish/2023-12-31-MSG.mov
 === OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 Disk [1 of 2] [46.5 GiB] | Size used: 40.000 GiB | Unused space: 6.500 GiB
 ${TEST_DIR}/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4
+
+=== OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
+Disk [1 of 1] [93.1 GiB] | Size used: 20.000 GiB | Unused space: 73.100 GiB
 EOF
 
-echo "--- Testing Dry Run ---"
-# We need to simulate user input. 
-# Plan 1, Base name: TEST, Destination: output
-printf "1\nTEST\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --dry-run
+assert_contains() {
+    local haystack="$1"
+    local needle="$2"
+    [[ "$haystack" == *"$needle"* ]] || { echo "Expected output to contain: $needle" >&2; exit 1; }
+}
+
+assert_not_contains() {
+    local haystack="$1"
+    local needle="$2"
+    [[ "$haystack" != *"$needle"* ]] || { echo "Expected output not to contain: $needle" >&2; exit 1; }
+}
+
+echo "--- Testing optional plan and base-name inputs ---"
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size mixed --base-name TEST --dry-run)
+assert_not_contains "$output" "Select a plan"
+assert_not_contains "$output" "Base name for disks"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 50 --base-name TEST --dry-run)
+assert_contains "$output" "Applying plan: OPTIMAL 50 GB-ONLY DISK PLAN"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 100 --base-name TEST --dry-run)
+assert_contains "$output" "Applying plan: OPTIMAL 100 GB-ONLY DISK PLAN"
+
+output=$(printf "TEST\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --dry-run)
+assert_not_contains "$output" "Select a plan"
+assert_contains "$output" "Base name for disks"
+
+output=$(printf "1\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --base-name TEST --dry-run)
+assert_contains "$output" "Select a plan"
+assert_not_contains "$output" "Base name for disks"
+
+output=$(printf "1\nTEST\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --dry-run)
+assert_contains "$output" "Select a plan"
+assert_contains "$output" "Base name for disks"
+
+if output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size dvd --base-name TEST --dry-run 2>&1); then
+    echo "FAILURE: invalid disk size should fail" >&2
+    exit 1
+fi
+assert_contains "$output" "Disk size/plan value 'dvd' is invalid"
+assert_contains "$output" "Accepted choices: 1 (OPTIMAL MIXED DISK PLAN"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --base-name "Archive Set #1" --dry-run)
+assert_contains "$output" "Processing Archive Set #1-Disk1-93.085GiB"
+
+echo "--- Testing plan_and_move shell argument construction ---"
+grep -Fq 'UNIX_SCRIPT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq 'apply_args+=(--disk-size "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 
 echo "--- Testing Real Move ---"
 mkdir output
-printf "1\nTEST\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt
+printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size mixed --base-name TEST
 
 # Verify results
 echo "--- Verifying Results ---"
