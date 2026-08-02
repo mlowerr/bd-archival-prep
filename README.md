@@ -78,7 +78,19 @@ Run from the directory you want to analyze:
   --recommendations-file /data/media/.archival-prep/blu-ray-file-recommendations.txt \
   --destination-root /data/BurnReady \
   --dry-run
+
+# Generate recommendations and apply a plan (both values are optional):
+/path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME]
+
+# For example, select the 50 GB-only plan and preserve spaces in the disk name:
+/path/to/repo/scripts/unix/lib/plan_and_move.sh --disk-size 50 --base-name "Family Archive"
 ```
+
+The `--disk-size` option accepts `mixed`, `50`, `100`, a displayed plan number,
+or the full plan heading. When the plan selection or base name is
+omitted, `apply-disk-plan.py` interactively prompts for only the missing value.
+The recommendation-file path and destination remain at the convenience
+driver's existing defaults.
 
 ### Windows PowerShell
 
@@ -102,6 +114,8 @@ Run from the directory you want to analyze:
 - `--jobs <N>` (duration script): max concurrent `ffprobe` workers (defaults to `3`, must be `>= 1`).
 - `--recommendations-file <FILE>` (apply script): existing `blu-ray-file-recommendations.txt` to execute.
 - `--destination-root <DIR>` (apply script): destination root where per-disk folders are created.
+- `--disk-size <PLAN>` (`apply-disk-plan.py`): select `mixed`, `50`, `100`, a displayed plan number, or a full plan heading without a prompt.
+- `--base-name <NAME>` (`apply-disk-plan.py`): set the disk-folder base name without a prompt.
 - `--dry-run` (apply script): show the planned folder creation and file moves without changing the filesystem.
 - `--help`: print script usage.
 
