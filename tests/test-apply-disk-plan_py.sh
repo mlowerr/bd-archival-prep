@@ -34,6 +34,9 @@ ${TEST_DIR}/mnt/z/Phish/2023-12-31-MSG.mov
 === OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 Disk [1 of 2] [46.5 GiB] | Size used: 40.000 GiB | Unused space: 6.500 GiB
 ${TEST_DIR}/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4
+
+=== OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
+Disk [1 of 1] [93.1 GiB] | Size used: 20.000 GiB | Unused space: 73.100 GiB
 EOF
 
 assert_contains() {
@@ -52,6 +55,12 @@ echo "--- Testing optional plan and base-name inputs ---"
 output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size mixed --base-name TEST --dry-run)
 assert_not_contains "$output" "Select a plan"
 assert_not_contains "$output" "Base name for disks"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 50 --base-name TEST --dry-run)
+assert_contains "$output" "Applying plan: OPTIMAL 50 GB-ONLY DISK PLAN"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 100 --base-name TEST --dry-run)
+assert_contains "$output" "Applying plan: OPTIMAL 100 GB-ONLY DISK PLAN"
 
 output=$(printf "TEST\noutput\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --dry-run)
 assert_not_contains "$output" "Select a plan"

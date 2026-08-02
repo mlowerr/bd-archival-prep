@@ -90,7 +90,20 @@ def select_plan(plan_names, value):
     normalized = value.strip().casefold()
     matches = []
 
-    if normalized.isdigit():
+    size_aliases = {
+        "mixed": "mixed disk plan",
+        "50": "50 gb-only disk plan",
+        "50gb": "50 gb-only disk plan",
+        "50 gb": "50 gb-only disk plan",
+        "100": "100 gb-only disk plan",
+        "100gb": "100 gb-only disk plan",
+        "100 gb": "100 gb-only disk plan",
+    }
+
+    if normalized in size_aliases:
+        heading_fragment = size_aliases[normalized]
+        matches = [name for name in plan_names if heading_fragment in name.casefold()]
+    elif normalized.isdigit():
         index = int(normalized)
         if 1 <= index <= len(plan_names):
             matches = [plan_names[index - 1]]
@@ -98,12 +111,6 @@ def select_plan(plan_names, value):
         for name in plan_names:
             folded_name = name.casefold()
             is_match = normalized == folded_name
-            if normalized == "mixed":
-                is_match = "mixed disk plan" in folded_name
-            elif normalized in ("50", "50gb", "50 gb"):
-                is_match = "50 gb-only disk plan" in folded_name
-            elif normalized in ("100", "100gb", "100 gb"):
-                is_match = "100 gb-only disk plan" in folded_name
             if is_match:
                 matches.append(name)
 
