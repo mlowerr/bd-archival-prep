@@ -90,6 +90,25 @@ grep -Fq 'apply_args+=(--disk-size "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan
 grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 
+echo "--- Testing folder-level plan application ---"
+mkdir -p "${TEST_DIR}/folder-source/Alpha/nested" "${TEST_DIR}/folder-source/Beta"
+touch "${TEST_DIR}/folder-source/Alpha/nested/one.mov" "${TEST_DIR}/folder-source/Beta/two.mov"
+cat <<EOF > folder-recommendations.txt
+# Target directory: ${TEST_DIR}/folder-source
+
+=== OPTIMAL MIXED DISK PLAN (50 GB marketed / 46.5 GiB + 100 GB marketed / 93.1 GiB) ===
+Disk [1 of 1] [93.1 GiB] | Size used: 1.000 GiB | Unused space: 92.100 GiB
+${TEST_DIR}/folder-source/Alpha
+${TEST_DIR}/folder-source/Beta
+EOF
+mkdir folder-output
+python3 "${APPLY_SCRIPT}" --recommendations folder-recommendations.txt --destination folder-output --disk-size mixed --base-name FOLDERS --item-type folders
+[[ -f folder-output/FOLDERS-Disk1-1.000GiB/Alpha/nested/one.mov ]]
+[[ -f folder-output/FOLDERS-Disk1-1.000GiB/Beta/two.mov ]]
+[[ ! -e "${TEST_DIR}/folder-source/Alpha" ]]
+grep -Fq -- '--item-type folders' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh"
+grep -Fq '"${UNIX_SCRIPT_DIR}/folder-size-recommendations.sh"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh"
+
 echo "--- Testing Real Move ---"
 mkdir output
 printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size mixed --base-name TEST
