@@ -8,6 +8,7 @@ Cross-platform scripts for preparing large directories for optical archival work
 |---|---|---|---|
 | Pack top-level folders onto 50 GB / 100 GB marketed Blu-ray media (46.5 GiB / 93.1 GiB usable) | `scripts/unix/folder-size-recommendations.sh` | `scripts/windows/folder-size-recommendations.ps1` | `folder-sizes.txt`, `blu-ray-recommendations.txt` |
 | Pack individual files onto 50 GB / 100 GB marketed Blu-ray media (46.5 GiB / 93.1 GiB usable) | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
+| Plan and move first-level folders into per-disk folders | `scripts/unix/lib/plan_and_move_folders.sh` | — | moved child folders under generated disk folders |
 | Move files into per-disk folders from `blu-ray-file-recommendations.txt` | `scripts/unix/apply-blu-ray-file-recommendations.sh` | — | moved files under user-selected disk folders |
 | Find filename-stem collisions (`name.ext1` vs `name.ext2`) | `scripts/unix/report-basename-collisions.sh` | `scripts/windows/report-basename-collisions.ps1` | `basename-collisions.txt` |
 | Report durations + flag potential duplicates by equal duration | `scripts/unix/report-file-durations.sh` | `scripts/windows/report-file-durations.ps1` | `file-durations.txt`, `possible-duplicates-by-duration.txt` |
@@ -16,13 +17,14 @@ All outputs are written to `.archival-prep/` by default.
 
 ## What this repo contains
 
-This repo provides five user-facing script sets:
+This repo provides six user-facing script sets:
 
 1. **Blu-ray folder packing recommendations** (first-level folder packing; Unix + Windows PowerShell).
 2. **Blu-ray file packing recommendations** (recursive per-file packing; Unix + Windows PowerShell).
-3. **Apply Blu-ray file recommendations** (move files into disk folders from a generated recommendation report; Unix only).
-4. **Basename collision report** (same filename stem across files; Unix + Windows PowerShell).
-5. **File duration reports** (all probed durations + possible duplicates by duration; Unix + Windows PowerShell).
+3. **Plan and move first-level folders** (generate a folder plan and move each immediate child folder as one unit; Unix only).
+4. **Apply Blu-ray file recommendations** (move files into disk folders from a generated recommendation report; Unix only).
+5. **Basename collision report** (same filename stem across files; Unix + Windows PowerShell).
+6. **File duration reports** (all probed durations + possible duplicates by duration; Unix + Windows PowerShell).
 
 By default, report-generation scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
@@ -46,6 +48,7 @@ You can optionally override both the scan target and output location:
 | `scripts/unix/lib/common.sh` | Shared Unix shell helper functions for path resolution, metadata headers, and report-directory handling. |
 | `scripts/unix/lib/blu_ray_packing.py` | Shared Unix packing engine used by folder and file recommendation scripts. |
 | `scripts/unix/lib/plan_and_move.sh` | Unix convenience driver that runs file-size recommendations and then invokes the Python apply helper. It is intended for local customization before use. |
+| `scripts/unix/lib/plan_and_move_folders.sh` | Unix convenience driver that plans and moves only immediate child folders of the invocation directory. |
 | `scripts/windows/*.ps1` | Windows PowerShell entry-point scripts for report generation. |
 | `scripts/windows/lib/Common.ps1` | Shared PowerShell helper functions for path resolution, metadata headers, and report-directory handling. |
 | `scripts/windows/lib/BluRayPacking.ps1` | Shared PowerShell packing engine used by folder and file recommendation scripts. |
@@ -82,6 +85,9 @@ Run from the directory you want to analyze:
 # Generate recommendations and apply a plan (both values are optional):
 /path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME]
 
+# Plan and move each immediate child folder as an indivisible unit:
+/path/to/repo/scripts/unix/lib/plan_and_move_folders.sh [--disk-size PLAN] [--base-name NAME]
+
 # For example, select the 50 GB-only plan and preserve spaces in the disk name:
 /path/to/repo/scripts/unix/lib/plan_and_move.sh --disk-size 50 --base-name "Family Archive"
 ```
@@ -91,6 +97,12 @@ or the full plan heading. When the plan selection or base name is
 omitted, `apply-disk-plan.py` interactively prompts for only the missing value.
 The recommendation-file path and destination remain at the convenience
 driver's existing defaults.
+
+`plan_and_move_folders.sh` runs in the directory to organize. It measures only
+that directory's immediate child folders, creates the same mixed/50 GB/100 GB
+plans as the folder recommendation script, and moves each selected child folder
+intact into a generated disk folder. It never treats deeper folders as separate
+packing candidates. The `.archival-prep` report directory is excluded.
 
 ### Windows PowerShell
 

@@ -6,11 +6,17 @@ import sys
 import argparse
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Apply a Blu-ray disk plan by moving files into disk-specific folders.")
-    parser.add_argument("--recommendations", help="Path to the recommendation file (blu-ray-file-recommendations.txt).")
+    parser = argparse.ArgumentParser(description="Apply a Blu-ray disk plan by moving items into disk-specific folders.")
+    parser.add_argument("--recommendations", help="Path to a file or folder recommendation report.")
     parser.add_argument("--destination", help="Base path where disk folders will be created.")
     parser.add_argument("--disk-size", help="Plan to apply: mixed, 50, 100, a plan number, or a full plan heading.")
     parser.add_argument("--base-name", help="Base name for the disk folders.")
+    parser.add_argument(
+        "--item-type",
+        choices=("files", "folders"),
+        default="files",
+        help="Move files (default) or first-level folders from the report target.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done without moving files.")
     return parser.parse_args()
 
@@ -139,6 +145,16 @@ def source_path_to_relative(path, target_dir):
         return match.group(1)
     return path.lstrip(os.sep)
 
+def validate_folder_item(path, target_dir):
+    """Return whether path is an immediate child directory of the report target."""
+    if not target_dir:
+        return False
+    real_path = os.path.realpath(path)
+    return (
+        os.path.dirname(real_path) == target_dir
+        and os.path.isdir(real_path)
+    )
+
 def main():
     args = parse_args()
 
@@ -194,6 +210,9 @@ def main():
         print(f"\nProcessing {disk_folder_name}...")
         
         for src_path in disk.get('files', []):
+            if args.item_type == "folders" and not validate_folder_item(src_path, target_dir):
+                print(f"  Error: Source is not a first-level folder of {target_dir}: {src_path}")
+                continue
             rel_path = source_path_to_relative(src_path, target_dir)
             final_dest_path = os.path.join(disk_path, rel_path)
             dest_parent = os.path.dirname(final_dest_path)
