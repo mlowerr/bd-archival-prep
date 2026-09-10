@@ -8,6 +8,7 @@ apply_args=(
   --recommendations .archival-prep/blu-ray-file-recommendations.txt
   --destination .
 )
+naming_option=""
 
 while (( $# > 0 )); do
   case "$1" in
@@ -21,13 +22,22 @@ while (( $# > 0 )); do
       apply_args+=(--base-name "$2")
       shift 2
       ;;
+    --include-disk-number|--disk-number-with-total)
+      if [[ -n "$naming_option" && "$naming_option" != "$1" ]]; then
+        echo "Error: --include-disk-number and --disk-number-with-total cannot be used together." >&2
+        exit 2
+      fi
+      naming_option="$1"
+      apply_args+=("$1")
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME]"
+      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]"
       exit 0
       ;;
     *)
       echo "Error: Unknown option: $1" >&2
-      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME]" >&2
+      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]" >&2
       exit 2
       ;;
   esac
