@@ -100,11 +100,16 @@ assert_contains "$output" "Processing TEST-Disk2of2-10.000GiB"
 output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --base-name TEST --disk-number-with-total --dry-run)
 assert_contains "$output" "Processing TEST-Disk1of1-93.085GiB"
 
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 50 --base-name TEST --include-can-add --dry-run)
+assert_contains "$output" "Processing TEST-Disk1-40.000GiB-CanAdd6.500GiB"
+assert_contains "$output" "Processing TEST-Disk2-10.000GiB-CanAdd36.500GiB"
+
 echo "--- Testing plan_and_move shell argument construction ---"
 grep -Fq 'UNIX_SCRIPT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq 'apply_args+=(--disk-size "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq -- '--include-disk-number|--disk-number-with-total)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq -- '--include-can-add)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 
 echo "--- Testing conflicting driver naming options fail before report generation ---"

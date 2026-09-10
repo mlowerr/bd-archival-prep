@@ -83,7 +83,7 @@ Run from the directory you want to analyze:
   --dry-run
 
 # Generate recommendations and apply a plan (both values are optional):
-/path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]
+/path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total] [--include-can-add]
 
 # Plan and move each immediate child folder as an indivisible unit:
 /path/to/repo/scripts/unix/lib/plan_and_move_folders.sh [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]
@@ -103,6 +103,12 @@ selected plan has only one disk. Pass `--include-disk-number` to retain
 `-Disk1-` for a one-disk plan. Pass `--disk-number-with-total` to use
 `-DiskNofY-` for every disk instead (for example, `-Disk2of3-` or
 `-Disk1of1-`). The two naming options are mutually exclusive.
+
+Pass `--include-can-add` to `plan_and_move.sh` to append each disk's unused
+capacity as the final portion of its folder name. For example, a disk using
+`40.000 GiB` of a `46.5 GiB` disk is named with the suffix
+`-40.000GiB-CanAdd6.500GiB`. The available amount comes from the selected
+plan's disk capacity and is displayed to three decimal places.
 
 `plan_and_move_folders.sh` runs in the directory to organize. It measures only
 that directory's immediate child folders, creates the same mixed/50 GB/100 GB
@@ -136,6 +142,7 @@ packing candidates. The `.archival-prep` report directory is excluded.
 - `--base-name <NAME>` (`apply-disk-plan.py`): set the disk-folder base name without a prompt.
 - `--include-disk-number` (`apply-disk-plan.py` and plan-and-move drivers): include `-Disk1-` in the folder name for a one-disk plan; by default it is omitted.
 - `--disk-number-with-total` (`apply-disk-plan.py` and plan-and-move drivers): use the opt-in `-DiskNofY-` naming form for all generated disk folders.
+- `--include-can-add` (`apply-disk-plan.py` and `plan_and_move.sh`): append `-CanAddXXXGiB` to each disk folder name, where `XXX` is that disk's unused capacity in the selected plan.
 - `--dry-run` (apply script): show the planned folder creation and file moves without changing the filesystem.
 - `--help`: print script usage.
 
