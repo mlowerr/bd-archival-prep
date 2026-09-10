@@ -107,6 +107,21 @@ grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan
 grep -Fq -- '--include-disk-number|--disk-number-with-total)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 
+echo "--- Testing conflicting driver naming options fail before report generation ---"
+for driver in plan_and_move.sh plan_and_move_folders.sh; do
+    conflict_dir="${TEST_DIR}/conflict-${driver}"
+    mkdir "$conflict_dir"
+    if output=$(cd "$conflict_dir" && "${PROJECT_ROOT}/scripts/unix/lib/${driver}" --include-disk-number --disk-number-with-total 2>&1); then
+        echo "FAILURE: ${driver} should reject conflicting naming options" >&2
+        exit 1
+    fi
+    assert_contains "$output" "cannot be used together"
+    [[ ! -e "${conflict_dir}/.archival-prep" ]] || {
+        echo "FAILURE: ${driver} generated reports before rejecting conflicting options" >&2
+        exit 1
+    }
+done
+
 echo "--- Testing folder-level plan application ---"
 mkdir -p "${TEST_DIR}/folder-source/Alpha/nested" "${TEST_DIR}/folder-source/Beta"
 touch "${TEST_DIR}/folder-source/Alpha/nested/one.mov" "${TEST_DIR}/folder-source/Beta/two.mov"

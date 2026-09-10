@@ -9,6 +9,7 @@ apply_args=(
   --destination .
   --item-type folders
 )
+naming_option=""
 
 while (( $# > 0 )); do
   case "$1" in
@@ -23,6 +24,11 @@ while (( $# > 0 )); do
       shift 2
       ;;
     --include-disk-number|--disk-number-with-total)
+      if [[ -n "$naming_option" && "$naming_option" != "$1" ]]; then
+        echo "Error: --include-disk-number and --disk-number-with-total cannot be used together." >&2
+        exit 2
+      fi
+      naming_option="$1"
       apply_args+=("$1")
       shift
       ;;
