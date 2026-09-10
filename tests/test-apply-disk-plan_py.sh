@@ -111,6 +111,8 @@ grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan
 grep -Fq -- '--include-disk-number|--disk-number-with-total)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq -- '--include-can-add)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq -- '--include-can-add)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh"
+grep -Fq -- '[--include-can-add]' < <("${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh" --help)
 
 echo "--- Testing conflicting driver naming options fail before report generation ---"
 for driver in plan_and_move.sh plan_and_move_folders.sh; do

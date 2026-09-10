@@ -32,14 +32,18 @@ while (( $# > 0 )); do
       apply_args+=("$1")
       shift
       ;;
+    --include-can-add)
+      apply_args+=("$1")
+      shift
+      ;;
     --help|-h)
-      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]"
+      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total] [--include-can-add]"
       echo "Plans and moves only immediate child folders of the current directory."
       exit 0
       ;;
     *)
       echo "Error: Unknown option: $1" >&2
-      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]" >&2
+      echo "Usage: $(basename "$0") [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total] [--include-can-add]" >&2
       exit 2
       ;;
   esac
