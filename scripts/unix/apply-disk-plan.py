@@ -23,6 +23,11 @@ def parse_args():
         help="Name disks with -DiskNofY- (including -Disk1of1- for a one-disk plan).",
     )
     parser.add_argument(
+        "--include-can-add",
+        action="store_true",
+        help="Append -CanAddXXXGiB using each disk's unused capacity.",
+    )
+    parser.add_argument(
         "--item-type",
         choices=("files", "folders"),
         default="files",
@@ -56,7 +61,10 @@ def parse_recommendation_file(file_path):
         sys.exit(1)
 
     plan_header_pattern = re.compile(r'^=== (OPTIMAL .* PLAN .*) ===')
-    disk_header_pattern = re.compile(r'^Disk \[(\d+) of \d+\] \[.*\] \| Size used: ([\d.]+) GiB \|')
+    disk_header_pattern = re.compile(
+        r'^Disk \[(\d+) of \d+\] \[.*\] \| Size used: ([\d.]+) GiB '
+        r'\| Unused space: ([\d.]+) GiB$'
+    )
 
     i = 0
     while i < len(lines):
@@ -81,6 +89,7 @@ def parse_recommendation_file(file_path):
             if disk_match:
                 disk_num = int(disk_match.group(1))
                 used_capacity = disk_match.group(2) + "GiB"
+                unused_capacity = disk_match.group(3) + "GiB"
                 files = []
                 i += 1
                 while i < len(lines) and lines[i].strip() and not plan_header_pattern.match(lines[i].strip()) and not disk_header_pattern.match(lines[i].strip()):
@@ -91,6 +100,7 @@ def parse_recommendation_file(file_path):
                 plans[current_plan].append({
                     'number': disk_num,
                     'capacity': used_capacity,
+                    'unused_capacity': unused_capacity,
                     'files': files
                 })
                 continue
@@ -222,7 +232,8 @@ def main():
             disk_label = f"-Disk{disk['number']}"
         else:
             disk_label = ""
-        disk_folder_name = f"{base_name}{disk_label}-{disk['capacity']}"
+        can_add_label = f"-CanAdd{disk['unused_capacity']}" if args.include_can_add else ""
+        disk_folder_name = f"{base_name}{disk_label}-{disk['capacity']}{can_add_label}"
         disk_path = os.path.join(dest_dir, disk_folder_name)
         
         print(f"\nProcessing {disk_folder_name}...")
