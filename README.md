@@ -83,10 +83,10 @@ Run from the directory you want to analyze:
   --dry-run
 
 # Generate recommendations and apply a plan (both values are optional):
-/path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME]
+/path/to/repo/scripts/unix/lib/plan_and_move.sh [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]
 
 # Plan and move each immediate child folder as an indivisible unit:
-/path/to/repo/scripts/unix/lib/plan_and_move_folders.sh [--disk-size PLAN] [--base-name NAME]
+/path/to/repo/scripts/unix/lib/plan_and_move_folders.sh [--disk-size PLAN] [--base-name NAME] [--include-disk-number | --disk-number-with-total]
 
 # For example, select the 50 GB-only plan and preserve spaces in the disk name:
 /path/to/repo/scripts/unix/lib/plan_and_move.sh --disk-size 50 --base-name "Family Archive"
@@ -97,6 +97,12 @@ or the full plan heading. When the plan selection or base name is
 omitted, `apply-disk-plan.py` interactively prompts for only the missing value.
 The recommendation-file path and destination remain at the convenience
 driver's existing defaults.
+
+Generated folder names omit the `-Disk1-` component by default when the
+selected plan has only one disk. Pass `--include-disk-number` to retain
+`-Disk1-` for a one-disk plan. Pass `--disk-number-with-total` to use
+`-DiskNofY-` for every disk instead (for example, `-Disk2of3-` or
+`-Disk1of1-`). The two naming options are mutually exclusive.
 
 `plan_and_move_folders.sh` runs in the directory to organize. It measures only
 that directory's immediate child folders, creates the same mixed/50 GB/100 GB
@@ -128,6 +134,8 @@ packing candidates. The `.archival-prep` report directory is excluded.
 - `--destination-root <DIR>` (apply script): destination root where per-disk folders are created.
 - `--disk-size <PLAN>` (`apply-disk-plan.py`): select `mixed`, `50`, `100`, a displayed plan number, or a full plan heading without a prompt.
 - `--base-name <NAME>` (`apply-disk-plan.py`): set the disk-folder base name without a prompt.
+- `--include-disk-number` (`apply-disk-plan.py` and plan-and-move drivers): include `-Disk1-` in the folder name for a one-disk plan; by default it is omitted.
+- `--disk-number-with-total` (`apply-disk-plan.py` and plan-and-move drivers): use the opt-in `-DiskNofY-` naming form for all generated disk folders.
 - `--dry-run` (apply script): show the planned folder creation and file moves without changing the filesystem.
 - `--help`: print script usage.
 

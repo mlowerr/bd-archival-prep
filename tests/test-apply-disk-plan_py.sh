@@ -34,6 +34,8 @@ ${TEST_DIR}/mnt/z/Phish/2023-12-31-MSG.mov
 === OPTIMAL 50 GB-ONLY DISK PLAN (46.5 GiB usable) ===
 Disk [1 of 2] [46.5 GiB] | Size used: 40.000 GiB | Unused space: 6.500 GiB
 ${TEST_DIR}/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4
+Disk [2 of 2] [46.5 GiB] | Size used: 10.000 GiB | Unused space: 36.500 GiB
+${TEST_DIR}/mnt/d/Grateful Dead/1977-05-08-Cornell.mkv
 
 === OPTIMAL 100 GB-ONLY DISK PLAN (93.1 GiB usable) ===
 Disk [1 of 1] [93.1 GiB] | Size used: 20.000 GiB | Unused space: 73.100 GiB
@@ -82,12 +84,27 @@ assert_contains "$output" "Disk size/plan value 'dvd' is invalid"
 assert_contains "$output" "Accepted choices: 1 (OPTIMAL MIXED DISK PLAN"
 
 output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --base-name "Archive Set #1" --dry-run)
-assert_contains "$output" "Processing Archive Set #1-Disk1-93.085GiB"
+assert_contains "$output" "Processing Archive Set #1-93.085GiB"
+assert_not_contains "$output" "Archive Set #1-Disk1-"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --base-name TEST --include-disk-number --dry-run)
+assert_contains "$output" "Processing TEST-Disk1-93.085GiB"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 50 --base-name TEST --dry-run)
+assert_contains "$output" "Processing TEST-Disk1-40.000GiB"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 50 --base-name TEST --disk-number-with-total --dry-run)
+assert_contains "$output" "Processing TEST-Disk1of2-40.000GiB"
+assert_contains "$output" "Processing TEST-Disk2of2-10.000GiB"
+
+output=$(printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.txt --disk-size 1 --base-name TEST --disk-number-with-total --dry-run)
+assert_contains "$output" "Processing TEST-Disk1of1-93.085GiB"
 
 echo "--- Testing plan_and_move shell argument construction ---"
 grep -Fq 'UNIX_SCRIPT_DIR="$(cd -- "${SCRIPT_DIR}/.." && pwd)"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq 'apply_args+=(--disk-size "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq 'apply_args+=(--base-name "$2")' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
+grep -Fq -- '--include-disk-number|--disk-number-with-total)' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 grep -Fq '"${apply_args[@]}"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move.sh"
 
 echo "--- Testing folder-level plan application ---"
@@ -103,8 +120,8 @@ ${TEST_DIR}/folder-source/Beta
 EOF
 mkdir folder-output
 python3 "${APPLY_SCRIPT}" --recommendations folder-recommendations.txt --destination folder-output --disk-size mixed --base-name FOLDERS --item-type folders
-[[ -f folder-output/FOLDERS-Disk1-1.000GiB/Alpha/nested/one.mov ]]
-[[ -f folder-output/FOLDERS-Disk1-1.000GiB/Beta/two.mov ]]
+[[ -f folder-output/FOLDERS-1.000GiB/Alpha/nested/one.mov ]]
+[[ -f folder-output/FOLDERS-1.000GiB/Beta/two.mov ]]
 [[ ! -e "${TEST_DIR}/folder-source/Alpha" ]]
 grep -Fq -- '--item-type folders' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh"
 grep -Fq '"${UNIX_SCRIPT_DIR}/folder-size-recommendations.sh"' "${PROJECT_ROOT}/scripts/unix/lib/plan_and_move_folders.sh"
@@ -115,21 +132,21 @@ printf "output\n" | python3 "${APPLY_SCRIPT}" --recommendations recommendations.
 
 # Verify results
 echo "--- Verifying Results ---"
-if [ -f "output/TEST-Disk1-93.085GiB/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4" ]; then
+if [ -f "output/TEST-93.085GiB/mnt/d/Pearl Jam/2024-05-10-Seattle.mp4" ]; then
     echo "SUCCESS: Pearl Jam/2024-05-10-Seattle.mp4 moved correctly"
 else
     echo "FAILURE: Pearl Jam/2024-05-10-Seattle.mp4 NOT found"
     exit 1
 fi
 
-if [ -f "output/TEST-Disk1-93.085GiB/mnt/d/Grateful Dead/1977-05-08-Cornell.mkv" ]; then
+if [ -f "output/TEST-93.085GiB/mnt/d/Grateful Dead/1977-05-08-Cornell.mkv" ]; then
     echo "SUCCESS: Grateful Dead/1977-05-08-Cornell.mkv moved correctly"
 else
     echo "FAILURE: Grateful Dead/1977-05-08-Cornell.mkv NOT found"
     exit 1
 fi
 
-if [ -f "output/TEST-Disk1-93.085GiB/mnt/z/Phish/2023-12-31-MSG.mov" ]; then
+if [ -f "output/TEST-93.085GiB/mnt/z/Phish/2023-12-31-MSG.mov" ]; then
     echo "SUCCESS: Phish/2023-12-31-MSG.mov moved correctly"
 else
     echo "FAILURE: Phish/2023-12-31-MSG.mov NOT found"

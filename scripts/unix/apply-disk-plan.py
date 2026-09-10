@@ -11,6 +11,17 @@ def parse_args():
     parser.add_argument("--destination", help="Base path where disk folders will be created.")
     parser.add_argument("--disk-size", help="Plan to apply: mixed, 50, 100, a plan number, or a full plan heading.")
     parser.add_argument("--base-name", help="Base name for the disk folders.")
+    naming_group = parser.add_mutually_exclusive_group()
+    naming_group.add_argument(
+        "--include-disk-number",
+        action="store_true",
+        help="Include -Disk1- when the selected plan contains only one disk.",
+    )
+    naming_group.add_argument(
+        "--disk-number-with-total",
+        action="store_true",
+        help="Name disks with -DiskNofY- (including -Disk1of1- for a one-disk plan).",
+    )
     parser.add_argument(
         "--item-type",
         choices=("files", "folders"),
@@ -203,8 +214,15 @@ def main():
     if args.dry_run:
         print("--- DRY RUN MODE ---")
 
+    total_disks = len(selected_plan)
     for disk in selected_plan:
-        disk_folder_name = f"{base_name}-Disk{disk['number']}-{disk['capacity']}"
+        if args.disk_number_with_total:
+            disk_label = f"-Disk{disk['number']}of{total_disks}"
+        elif total_disks > 1 or args.include_disk_number:
+            disk_label = f"-Disk{disk['number']}"
+        else:
+            disk_label = ""
+        disk_folder_name = f"{base_name}{disk_label}-{disk['capacity']}"
         disk_path = os.path.join(dest_dir, disk_folder_name)
         
         print(f"\nProcessing {disk_folder_name}...")
