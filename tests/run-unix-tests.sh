@@ -544,6 +544,39 @@ YES
   assert_path_not_exists "$destination"
 }
 
+test_infill_moves_largest_fitting_files_and_preserves_source_folder() {
+  local ws target infill output
+  ws="$(new_workspace)"
+  target="$ws/target"
+  infill="$target/More Media"
+  mkdir -p "$target/Disk-A" "$target/Disk-B" "$infill/shows"
+  truncate -s 6 "$target/Disk-A/existing.bin"
+  truncate -s 7 "$target/Disk-B/existing.bin"
+  truncate -s 5 "$infill/shows/largest.bin"
+  truncate -s 4 "$infill/smaller.bin"
+  truncate -s 3 "$infill/tiny.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 10B --target-dir "$target" --infill-dir "$infill")"
+
+  assert_file_exists "$target/Disk-A/More Media/smaller.bin"
+  assert_file_exists "$target/Disk-B/More Media/tiny.bin"
+  assert_file_exists "$infill/shows/largest.bin"
+  assert_contains <(printf '%s\n' "$output") "Infill complete: 2 file(s) moved."
+}
+
+test_infill_reports_when_no_file_fits() {
+  local ws output
+  ws="$(new_workspace)"
+  mkdir -p "$ws/target/Disk-A" "$ws/infill"
+  truncate -s 9 "$ws/target/Disk-A/existing.bin"
+  truncate -s 2 "$ws/infill/too-large.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 10B --target-dir "$ws/target" --infill-dir "$ws/infill")"
+
+  assert_contains <(printf '%s\n' "$output") "No infill opportunity"
+  assert_file_exists "$ws/infill/too-large.bin"
+}
+
 run_test "file-size-recommendations.sh generates deterministic reports" test_file_size_recommendations
 run_test "file-size-recommendations.sh uses 46.5 GiB for 50 GB disks" test_file_size_recommendations_uses_46_5_gib_for_50gb_disks
 run_test "folder-size-recommendations.sh generates deterministic reports" test_folder_size_recommendations
@@ -555,5 +588,7 @@ run_test "apply-blu-ray-file-recommendations.sh supports dry runs" test_apply_bl
 run_test "apply-blu-ray-file-recommendations.sh re-prompts when a destination disk folder already exists" test_apply_blu_ray_file_recommendations_reprompts_for_existing_disk_folder
 run_test "apply-blu-ray-file-recommendations.sh requires explicit confirmation before moving files" test_apply_blu_ray_file_recommendations_requires_confirmation
 run_test "apply-blu-ray-file-recommendations.sh rejects malformed selected plans" test_apply_blu_ray_file_recommendations_rejects_malformed_selected_plan
+run_test "infill.sh moves largest-fitting files into source-named folders" test_infill_moves_largest_fitting_files_and_preserves_source_folder
+run_test "infill.sh reports when no file fits" test_infill_reports_when_no_file_fits
 
 echo "All ${TEST_COUNT} Unix script tests passed."

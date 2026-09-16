@@ -10,6 +10,7 @@ Cross-platform scripts for preparing large directories for optical archival work
 | Pack individual files onto 50 GB / 100 GB marketed Blu-ray media (46.5 GiB / 93.1 GiB usable) | `scripts/unix/file-size-recommendations.sh` | `scripts/windows/file-size-recommendations.ps1` | `file-sizes.txt`, `blu-ray-file-recommendations.txt` |
 | Plan and move first-level folders into per-disk folders | `scripts/unix/lib/plan_and_move_folders.sh` | — | moved child folders under generated disk folders |
 | Move files into per-disk folders from `blu-ray-file-recommendations.txt` | `scripts/unix/apply-blu-ray-file-recommendations.sh` | — | moved files under user-selected disk folders |
+| Fill unused space in existing disk folders | `scripts/unix/infill.sh` | — | largest-fitting infill files moved into source-named subfolders |
 | Find filename-stem collisions (`name.ext1` vs `name.ext2`) | `scripts/unix/report-basename-collisions.sh` | `scripts/windows/report-basename-collisions.ps1` | `basename-collisions.txt` |
 | Report durations + flag potential duplicates by equal duration | `scripts/unix/report-file-durations.sh` | `scripts/windows/report-file-durations.ps1` | `file-durations.txt`, `possible-duplicates-by-duration.txt` |
 
@@ -17,7 +18,7 @@ All outputs are written to `.archival-prep/` by default.
 
 ## What this repo contains
 
-This repo provides six user-facing script sets:
+This repo provides seven user-facing script sets:
 
 1. **Blu-ray folder packing recommendations** (first-level folder packing; Unix + Windows PowerShell).
 2. **Blu-ray file packing recommendations** (recursive per-file packing; Unix + Windows PowerShell).
@@ -25,6 +26,7 @@ This repo provides six user-facing script sets:
 4. **Apply Blu-ray file recommendations** (move files into disk folders from a generated recommendation report; Unix only).
 5. **Basename collision report** (same filename stem across files; Unix + Windows PowerShell).
 6. **File duration reports** (all probed durations + possible duplicates by duration; Unix + Windows PowerShell).
+7. **Disk-folder infill** (move additional files into unused capacity in existing disk folders; Unix only).
 
 By default, report-generation scripts run against the **current working directory** (the directory where you invoke the script) and write output files under:
 
@@ -45,6 +47,7 @@ You can optionally override both the scan target and output location:
 | `Makefile` | Convenience entry point for the Unix test suite (`make test-unix`). |
 | `scripts/unix/*.sh` | Unix/macOS entry-point scripts for generating reports and applying file-packing recommendations. |
 | `scripts/unix/apply-disk-plan.py` | Standalone Python helper that can parse a `blu-ray-file-recommendations.txt` report and move files into disk folders interactively. The shell `apply-blu-ray-file-recommendations.sh` is the recommended Unix entry point because it performs stricter validation and confirmation. |
+| `scripts/unix/infill.sh` | Unix utility that fills unused capacity in existing disk folders from one or more infill directories. |
 | `scripts/unix/lib/common.sh` | Shared Unix shell helper functions for path resolution, metadata headers, and report-directory handling. |
 | `scripts/unix/lib/blu_ray_packing.py` | Shared Unix packing engine used by folder and file recommendation scripts. |
 | `scripts/unix/lib/plan_and_move.sh` | Unix convenience driver that runs file-size recommendations and then invokes the Python apply helper. It is intended for local customization before use. |
@@ -65,6 +68,7 @@ Run from the directory you want to analyze:
 /path/to/repo/scripts/unix/folder-size-recommendations.sh
 /path/to/repo/scripts/unix/file-size-recommendations.sh
 /path/to/repo/scripts/unix/apply-blu-ray-file-recommendations.sh
+/path/to/repo/scripts/unix/infill.sh --disk-capacity 46.5GiB --infill-dir /data/MoreMedia
 /path/to/repo/scripts/unix/report-basename-collisions.sh
 /path/to/repo/scripts/unix/report-file-durations.sh
 
@@ -110,6 +114,24 @@ unused capacity as the final portion of its folder name. For example, a disk usi
 `-40.000GiB-CanAdd6.500GiB`. The available amount comes from the selected
 plan's disk capacity and is displayed to three decimal places.
 
+After either plan-and-move driver has created disk directories, run `infill.sh`
+from their parent directory. It measures each immediate child disk directory and
+moves the largest infill file that fits, continuing in descending file-size order:
+
+```bash
+/path/to/repo/scripts/unix/infill.sh \
+  --disk-capacity 46.5GiB \
+  --infill-dir /data/MoreMedia
+```
+
+`--target-dir` may identify a different parent directory, and `--infill-dir` may
+be repeated. If capacity or the infill location is omitted, the script prompts
+only for the missing value (it never prompts for a folder name). A bare capacity
+is interpreted as GiB; decimal and binary unit suffixes are also accepted. Each
+moved file is placed under a directory named after its infill root, with its
+relative path preserved (for example, `Disk1/MoreMedia/concert/video.mkv`). The
+script reports when no file can fit. Use `--dry-run` to preview moves.
+
 `plan_and_move_folders.sh` runs in the directory to organize. It measures only
 that directory's immediate child folders, creates the same mixed/50 GB/100 GB
 plans as the folder recommendation script, and moves each selected child folder
@@ -144,6 +166,10 @@ packing candidates. The `.archival-prep` report directory is excluded.
 - `--disk-number-with-total` (`apply-disk-plan.py` and plan-and-move drivers): use the opt-in `-DiskNofY-` naming form for all generated disk folders.
 - `--include-can-add` (`apply-disk-plan.py` and both plan-and-move drivers): append `-CanAddXXXGiB` to each disk folder name, where `XXX` is that disk's unused capacity in the selected plan.
 - `--dry-run` (apply script): show the planned folder creation and file moves without changing the filesystem.
+- `--disk-capacity <SIZE>` / `--capacity <SIZE>` (`infill.sh`): capacity of each existing disk directory; a bare number means GiB.
+- `--infill-dir <DIR>` (`infill.sh`): infill source; repeat to use multiple source trees.
+- `--target-dir <DIR>` (`infill.sh`): parent containing existing disk directories (defaults to the current directory).
+- `--dry-run` (`infill.sh`): preview infill moves without changing the filesystem.
 - `--help`: print script usage.
 
 ### PowerShell scripts
