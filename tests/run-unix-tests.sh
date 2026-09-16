@@ -577,6 +577,20 @@ test_infill_reports_when_no_file_fits() {
   assert_file_exists "$ws/infill/too-large.bin"
 }
 
+test_infill_deduplicates_files_from_overlapping_roots() {
+  local ws output
+  ws="$(new_workspace)"
+  mkdir -p "$ws/target/Disk-A" "$ws/infill/nested"
+  truncate -s 1 "$ws/infill/nested/only-once.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 10B --target-dir "$ws/target" \
+    --infill-dir "$ws/infill" --infill-dir "$ws/infill" --infill-dir "$ws/infill/nested")"
+
+  assert_file_exists "$ws/target/Disk-A/infill/nested/only-once.bin"
+  assert_path_not_exists "$ws/infill/nested/only-once.bin"
+  assert_contains <(printf '%s\n' "$output") "Infill complete: 1 file(s) moved."
+}
+
 run_test "file-size-recommendations.sh generates deterministic reports" test_file_size_recommendations
 run_test "file-size-recommendations.sh uses 46.5 GiB for 50 GB disks" test_file_size_recommendations_uses_46_5_gib_for_50gb_disks
 run_test "folder-size-recommendations.sh generates deterministic reports" test_folder_size_recommendations
@@ -590,5 +604,6 @@ run_test "apply-blu-ray-file-recommendations.sh requires explicit confirmation b
 run_test "apply-blu-ray-file-recommendations.sh rejects malformed selected plans" test_apply_blu_ray_file_recommendations_rejects_malformed_selected_plan
 run_test "infill.sh moves largest-fitting files into source-named folders" test_infill_moves_largest_fitting_files_and_preserves_source_folder
 run_test "infill.sh reports when no file fits" test_infill_reports_when_no_file_fits
+run_test "infill.sh deduplicates files from overlapping roots" test_infill_deduplicates_files_from_overlapping_roots
 
 echo "All ${TEST_COUNT} Unix script tests passed."
