@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -29,6 +30,34 @@ class Candidate:
     source: Path
     destination_relative: Path
     size: int
+
+
+def bundle_linked_candidates(candidates: list[Candidate]) -> list[list[Candidate]]:
+    """Keep symlinks and their in-tree targets in the same allocation."""
+    candidate_by_source = {candidate.source.absolute(): index for index, candidate in enumerate(candidates)}
+    linked: list[set[int]] = [set() for _ in candidates]
+    for index, candidate in enumerate(candidates):
+        if not candidate.source.is_symlink():
+            continue
+        target_index = candidate_by_source.get(candidate.source.resolve())
+        if target_index is not None:
+            linked[index].add(target_index)
+            linked[target_index].add(index)
+
+    bundles: list[list[Candidate]] = []
+    unbundled = set(range(len(candidates)))
+    while unbundled:
+        pending = [min(unbundled)]
+        component: list[int] = []
+        while pending:
+            index = pending.pop()
+            if index not in unbundled:
+                continue
+            unbundled.remove(index)
+            component.append(index)
+            pending.extend(linked[index])
+        bundles.append([candidates[index] for index in sorted(component)])
+    return bundles
 
 
 def capacity_bytes(value: str) -> int:
@@ -121,23 +150,44 @@ def main(argv: list[str] | None = None) -> int:
                 seen_files.add(absolute_item)
                 candidates.append(Candidate(item, Path(source.name) / item.relative_to(source), item.stat().st_size))
     candidates.sort(key=lambda item: (-item.size, str(item.source)))
+    bundles = bundle_linked_candidates(candidates)
+    bundles.sort(key=lambda bundle: (-sum(candidate.size for candidate in bundle), str(bundle[0].source)))
 
     moved = 0
     for target in targets:
         remaining = args.disk_capacity - directory_file_size(target)
         if remaining <= 0:
             continue
-        for candidate in list(candidates):
-            destination = target / candidate.destination_relative
-            if candidate.size > remaining or destination.exists():
+        for bundle in list(bundles):
+            bundle_size = sum(candidate.size for candidate in bundle)
+            destinations = [target / candidate.destination_relative for candidate in bundle]
+            if bundle_size > remaining or any(destination.exists() for destination in destinations):
                 continue
-            print(f"{'Would move' if args.dry_run else 'Moving'}: {candidate.source} -> {destination}")
-            if not args.dry_run:
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(candidate.source), str(destination))
-            candidates.remove(candidate)
-            remaining -= candidate.size
-            moved += 1
+            destination_by_source = {
+                candidate.source.absolute(): destination
+                for candidate, destination in zip(bundle, destinations)
+            }
+            for candidate, destination in zip(bundle, destinations):
+                print(f"{'Would move' if args.dry_run else 'Moving'}: {candidate.source} -> {destination}")
+                if not args.dry_run:
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    target_destination = (
+                        destination_by_source.get(candidate.source.resolve())
+                        if candidate.source.is_symlink()
+                        else None
+                    )
+                    if target_destination is None:
+                        shutil.move(str(candidate.source), str(destination))
+                    else:
+                        link_target = candidate.source.readlink()
+                        candidate.source.unlink()
+                        if link_target.is_absolute():
+                            destination.symlink_to(target_destination)
+                        else:
+                            destination.symlink_to(os.path.relpath(target_destination, destination.parent))
+                moved += 1
+            bundles.remove(bundle)
+            remaining -= bundle_size
 
     if moved == 0:
         print("No infill opportunity: no infill file fits the available disk space.")

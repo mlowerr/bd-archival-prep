@@ -132,8 +132,10 @@ moved file is placed under a directory named after its infill root, with its
 relative path preserved (for example, `Disk1/MoreMedia/concert/video.mkv`). The
 script scans a file only once when infill roots are repeated or overlap, using
 the first supplied root to determine its destination path. Distinct symlink
-entries are preserved rather than deduplicated with their target files. It
-reports when no file can fit. Use `--dry-run` to preview moves.
+entries are preserved rather than deduplicated with their target files. A
+relative symlink and its target are allocated to the same disk when both are in
+the infill trees; neither is moved if their combined size does not fit. It reports
+when no file can fit. Use `--dry-run` to preview moves.
 
 `plan_and_move_folders.sh` runs in the directory to organize. It measures only
 that directory's immediate child folders, creates the same mixed/50 GB/100 GB
