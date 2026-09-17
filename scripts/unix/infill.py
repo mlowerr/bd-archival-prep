@@ -115,10 +115,10 @@ def main(argv: list[str] | None = None) -> int:
     for source in sources:
         for item in source.rglob("*"):
             if item.is_file():
-                resolved_item = item.resolve()
-                if resolved_item in seen_files:
+                absolute_item = item.absolute()
+                if absolute_item in seen_files:
                     continue
-                seen_files.add(resolved_item)
+                seen_files.add(absolute_item)
                 candidates.append(Candidate(item, Path(source.name) / item.relative_to(source), item.stat().st_size))
     candidates.sort(key=lambda item: (-item.size, str(item.source)))
 
