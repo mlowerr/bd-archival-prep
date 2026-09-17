@@ -115,8 +115,9 @@ unused capacity as the final portion of its folder name. For example, a disk usi
 plan's disk capacity and is displayed to three decimal places.
 
 After either plan-and-move driver has created disk directories, run `infill.sh`
-from their parent directory. It measures each immediate child disk directory and
-moves the largest infill file that fits, continuing in descending file-size order:
+from their parent directory. It measures every immediate child disk directory and
+distributes the largest-fitting infill files among them in repeated passes, assigning
+at most one file (or linked-file bundle) to each disk per pass:
 
 ```bash
 /path/to/repo/scripts/unix/infill.sh \
