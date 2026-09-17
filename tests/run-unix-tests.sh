@@ -577,6 +577,24 @@ test_infill_reports_when_no_file_fits() {
   assert_file_exists "$ws/infill/too-large.bin"
 }
 
+test_infill_distributes_candidates_across_first_level_directories() {
+  local ws target infill output
+  ws="$(new_workspace)"
+  target="$ws/target"
+  infill="$ws/infill"
+  mkdir -p "$target/1" "$target/2" "$target/3" "$infill"
+  truncate -s 1 "$infill/a.bin"
+  truncate -s 1 "$infill/b.bin"
+  truncate -s 1 "$infill/c.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 10B --target-dir "$target" --infill-dir "$infill")"
+
+  assert_file_exists "$target/1/infill/a.bin"
+  assert_file_exists "$target/2/infill/b.bin"
+  assert_file_exists "$target/3/infill/c.bin"
+  assert_contains <(printf '%s\n' "$output") "Infill complete: 3 file(s) moved."
+}
+
 test_infill_deduplicates_files_from_overlapping_roots() {
   local ws output
   ws="$(new_workspace)"
@@ -640,6 +658,7 @@ run_test "apply-blu-ray-file-recommendations.sh requires explicit confirmation b
 run_test "apply-blu-ray-file-recommendations.sh rejects malformed selected plans" test_apply_blu_ray_file_recommendations_rejects_malformed_selected_plan
 run_test "infill.sh moves largest-fitting files into source-named folders" test_infill_moves_largest_fitting_files_and_preserves_source_folder
 run_test "infill.sh reports when no file fits" test_infill_reports_when_no_file_fits
+run_test "infill.sh distributes candidates across first-level directories" test_infill_distributes_candidates_across_first_level_directories
 run_test "infill.sh deduplicates files from overlapping roots" test_infill_deduplicates_files_from_overlapping_roots
 run_test "infill.sh preserves distinct symlink entries" test_infill_preserves_distinct_symlink_entries
 run_test "infill.sh keeps relative symlinks with their targets" test_infill_keeps_relative_symlinks_with_their_targets
