@@ -591,6 +591,42 @@ test_infill_deduplicates_files_from_overlapping_roots() {
   assert_contains <(printf '%s\n' "$output") "Infill complete: 1 file(s) moved."
 }
 
+test_infill_preserves_distinct_symlink_entries() {
+  local ws output
+  ws="$(new_workspace)"
+  mkdir -p "$ws/target/Disk-A" "$ws/infill"
+  truncate -s 1 "$ws/infill/payload.bin"
+  ln -s payload.bin "$ws/infill/payload-link.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 10B --target-dir "$ws/target" \
+    --infill-dir "$ws/infill" --infill-dir "$ws/infill")"
+
+  assert_file_exists "$ws/target/Disk-A/infill/payload.bin"
+  [[ -L "$ws/target/Disk-A/infill/payload-link.bin" ]] || fail "Expected symlink to exist in destination"
+  assert_file_exists "$ws/target/Disk-A/infill/payload-link.bin"
+  assert_path_not_exists "$ws/infill/payload.bin"
+  [[ ! -L "$ws/infill/payload-link.bin" ]] || fail "Did not expect symlink to remain in source"
+  assert_contains <(printf '%s\n' "$output") "Infill complete: 2 file(s) moved."
+}
+
+test_infill_keeps_relative_symlinks_with_their_targets() {
+  local ws output
+  ws="$(new_workspace)"
+  mkdir -p "$ws/target/Disk-A" "$ws/target/Disk-B" "$ws/infill"
+  truncate -s 1 "$ws/infill/payload.bin"
+  ln -s payload.bin "$ws/infill/payload-link.bin"
+
+  output="$("$REPO_ROOT/scripts/unix/infill.sh" --capacity 1B --target-dir "$ws/target" \
+    --infill-dir "$ws/infill")"
+
+  assert_file_exists "$ws/infill/payload.bin"
+  [[ -L "$ws/infill/payload-link.bin" ]] || fail "Expected symlink to remain in source"
+  assert_file_exists "$ws/infill/payload-link.bin"
+  assert_path_not_exists "$ws/target/Disk-A/infill/payload.bin"
+  assert_path_not_exists "$ws/target/Disk-B/infill/payload.bin"
+  assert_contains <(printf '%s\n' "$output") "No infill opportunity"
+}
+
 run_test "file-size-recommendations.sh generates deterministic reports" test_file_size_recommendations
 run_test "file-size-recommendations.sh uses 46.5 GiB for 50 GB disks" test_file_size_recommendations_uses_46_5_gib_for_50gb_disks
 run_test "folder-size-recommendations.sh generates deterministic reports" test_folder_size_recommendations
@@ -605,5 +641,7 @@ run_test "apply-blu-ray-file-recommendations.sh rejects malformed selected plans
 run_test "infill.sh moves largest-fitting files into source-named folders" test_infill_moves_largest_fitting_files_and_preserves_source_folder
 run_test "infill.sh reports when no file fits" test_infill_reports_when_no_file_fits
 run_test "infill.sh deduplicates files from overlapping roots" test_infill_deduplicates_files_from_overlapping_roots
+run_test "infill.sh preserves distinct symlink entries" test_infill_preserves_distinct_symlink_entries
+run_test "infill.sh keeps relative symlinks with their targets" test_infill_keeps_relative_symlinks_with_their_targets
 
 echo "All ${TEST_COUNT} Unix script tests passed."
